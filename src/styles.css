@@ -1,311 +1,358 @@
-/* ====================================================================
-   Pico Weekschema – Single CSS (vervang alle andere losse CSS-bestanden)
-   ==================================================================== */
-
-/* ---------- Design tokens ---------- */
+/* =====================================================================
+   Global design tokens
+   ===================================================================== */
 :root {
-  --bg: #ffffff;
-  --paper: #ffffff;
-  --paper-weak: #f8fafc;       /* zacht grijs */
-  --ink: #0f172a;              /* slate-900 */
-  --muted: #64748b;            /* slate-500 */
-  --border: #e5e7eb;           /* slate-200 */
-  --accent: #2563eb;           /* blue-600 */
-  --accent-weak: #dbeafe;      /* blue-100 */
+  --ph-border: rgba(0, 0, 0, .12);
+  --ph-muted:  rgba(0, 0, 0, .56);
+  --ph-bg:     #fff;
 
-  --radius: 14px;
-  --radius-sm: 10px;
-  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 20px rgba(0,0,0,.06);
+  --ws-grid-gap: 16px;
+  --ws-drop-border: rgba(0,0,0,.18);
+  --ws-drop-dash: 4px;
+  --ws-chip-bg: #f7f8fb;
+  --ws-chip-text: #111827;
 }
 
-/* ---------- Base ---------- */
-*,
-*::before,
-*::after { box-sizing: border-box; }
+/* Kleine, veilige basis */
+* { box-sizing: border-box; }
+img { max-width: 100%; height: auto; }
 
-html, body, #root {
-  height: 100%;
-}
+/* App wrapper (iets lower starten) */
+.ws-app { padding-top: 10px; }
 
-html { font-size: 16px; }
-
-body {
-  margin: 0;
-  color: var(--ink);
-  background: var(--bg);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-img { display: block; max-width: 100%; }
-
-/* ---------- Helpers ---------- */
-.container {
-  max-width: 1240px;
-  margin-inline: auto;
-  padding-inline: 20px;
-}
-
-.hstack { display: flex; gap: 10px; align-items: center; }
-.gap-16 { gap: 16px; }
-.mt-8 { margin-top: 8px; }
-.mt-16 { margin-top: 16px; }
-.mt-24 { margin-top: 24px; }
-.mb-16 { margin-bottom: 16px; }
-.mb-24 { margin-bottom: 24px; }
-
-/* ---------- Buttons ---------- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: #fff;
-  color: var(--ink);
-  box-shadow: 0 1px 0 rgba(0,0,0,.02);
-  cursor: pointer;
-  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
-}
-.btn:hover { background: #fff; border-color: #dbe0e6; box-shadow: var(--shadow); }
-.btn:active { transform: translateY(0.5px); }
-
-.btn-primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover { background: #1e55c9; }
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: #fff;
-}
-
-/* ---------- Cards / panels ---------- */
-.card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--paper);
-  box-shadow: var(--shadow);
-}
-
-/* ---------- Weekschema lay-out ---------- */
-
-/* Shell van het weekschema */
-.ws-shell { }
-
-/* 2-koloms lay-out: bibliotheek links, rooster rechts */
-.ws-layout {
-  display: grid;
-  grid-template-columns: 360px 1fr; /* links 360px, rechts rest */
-  gap: 24px;
-}
-
-/* responsief: stapel onder elkaar */
-@media (max-width: 1100px) {
-  .ws-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------- Bibliotheek ---------- */
-.ws-lib {
+/* =====================================================================
+   Generic card + chip (ph-*)
+   Wordt gebruikt voor Admin-header en Menu
+   ===================================================================== */
+.ph-card {
+  border: 1px solid var(--ph-border);
+  border-radius: 24px;
+  background: var(--ph-bg);
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
   position: relative;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--paper);
-  box-shadow: var(--shadow);
-  padding: 16px;
+  margin-top: 12px;
+}
+.ph-card + .ph-card {
+  /* extra ruimte tussen kaarten: header → menu */
+  margin-top: 28px;
 }
 
-.ws-lib-header {
+.ph-headbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  padding: 0 16px;         /* chip 'zweeft' – geen extra top nodig */
+  flex-wrap: nowrap;       /* chip + tip op 1 lijn */
 }
 
-.ws-search {
+.ph-chip {
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #fff;
+  border: 1px solid var(--ph-border);
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+  position: relative;
+  top: -12px;              /* optische 'zweef' boven rand */
+}
+
+.ph-tip-inline {
+  position: relative;
+  top: -12px;              /* exact gelijke baseline als chip */
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ph-muted);
+  white-space: nowrap;     /* op 1 lijn blijven */
+}
+@media (max-width: 640px){
+  .ph-tip-inline { white-space: normal; }
+}
+
+.ph-card-body {
+  padding: 16px 20px 20px;
+}
+.ph-card-body--tight { padding-top: 8px; }
+.ph-card-body--no-topgap { margin-top: -4px; }
+
+/* =====================================================================
+   User cards in Admin-header
+   ===================================================================== */
+.ph-userlist {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+}
+@media (max-width: 1200px){
+  .ph-userlist { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+}
+@media (max-width: 640px){
+  .ph-userlist { grid-template-columns: 1fr; }
+}
+
+.ph-usercard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ph-border);
+  background: #fff;
+  border-radius: 18px;
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow .12s ease, background .12s ease;
+}
+.ph-usercard:hover { box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.ph-usercard.is-active { outline: 2px solid rgba(0,110,255,.25); }
+.ph-usercard.is-disabled { cursor: default; opacity: .85; }
+
+.ph-user-avatar {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: #f0f2f6;
+  border: 1px solid var(--ph-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.ph-user-img {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.ph-user-initials {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px; letter-spacing: .5px; color: #5a6573;
+}
+.ph-user-meta { min-width: 0; }
+.ph-user-name { font-weight: 700; }
+.ph-user-role { font-size: 13px; color: var(--ph-muted); }
+
+/* =====================================================================
+   Menu – tegels
+   ===================================================================== */
+.ph-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  justify-items: stretch;
+  align-items: stretch;
+}
+
+.ph-tile{
+  display: flex;
+  align-items: center;
+  gap: 14px;
   width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  outline: none;
+  padding: 18px;
+  border: 1px solid var(--ph-border);
+  border-radius: 18px;
+  background: #fff;
+  transition: box-shadow .12s ease, transform .06s ease, background .12s ease, outline-color .12s ease;
 }
-.ws-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.ph-tile:hover { box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.ph-tile:active { transform: scale(.995); }
+.ph-tile.is-active { outline: 2px solid rgba(0,110,255,.25); }
 
-/* lijst is scrollbaar */
-.ws-lib-list {
-  max-height: calc(100vh - 280px);
+.ph-tile-icon{
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: #f6f7fb;
+  border: 1px solid var(--ph-border);
+  flex-shrink: 0;
+}
+.ph-emoji{ font-size: 22px; transform: translateY(1px); }
+.ph-tile-title{ font-weight: 700; }
+
+/* =====================================================================
+   Weekschema (ws-*)
+   2-koloms: links sticky bibliotheek, rechts schema met 7 kolommen
+   ===================================================================== */
+.ws-layout{
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: var(--ws-grid-gap);
+  align-items: start;
+}
+@media (max-width: 1200px){
+  .ws-layout{ grid-template-columns: 360px 1fr; }
+}
+@media (max-width: 900px){
+  .ws-layout{ grid-template-columns: 1fr; }
+}
+
+/* Bibliotheek links */
+.ws-lib-panel{
+  position: sticky;
+  top: 86px;                    /* sticky offset (header + chip) */
+  align-self: start;
+  border: 1px dashed var(--ws-drop-border);
+  border-radius: 16px;
+  background: #fff;
+  padding: 14px;
+}
+.ws-lib-head{
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ws-lib-sub{
+  font-size: 13px;
+  color: var(--ph-muted);
+  margin-bottom: 10px;
+}
+.ws-lib-list{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-height: 60vh;
   overflow: auto;
   padding-right: 4px;
 }
-
-/* item */
-.ws-lib-item {
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--border);
-  background: var(--paper);
-  border-radius: var(--radius);
-  padding: 12px;
-  cursor: grab;
-  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
-}
-.ws-lib-item + .ws-lib-item { margin-top: 10px; }
-.ws-lib-item:hover { box-shadow: var(--shadow); border-color: #d9dee5; background: var(--paper-weak); }
-
-.ws-picto {
-  width: 56px;
-  height: 56px;
-  object-fit: contain;
-  border: 1px solid var(--border);
+.ws-lib-item{
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ph-border);
   border-radius: 12px;
   background: #fff;
+  cursor: grab;
+}
+.ws-lib-item:active{ cursor: grabbing; }
+.ws-lib-icon{
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
 }
 
-.ws-title { font-weight: 700; }
-.ws-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-/* ---------- Rooster (rechts) ---------- */
-
-.ws-days {
+/* Schema rechts */
+.ws-schedule{
+  min-width: 840px;
+}
+.ws-days-grid{
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 16px;
-  margin-bottom: 8px;
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  gap: var(--ws-grid-gap);
 }
 
-.ws-dayhead {
-  text-align: center;
-  color: var(--muted);
-  font-size: 14px;
-}
-.ws-dayhead .ws-dayname { font-weight: 700; color: var(--ink); font-size: 16px; }
-.ws-dayhead .ws-date    { color: var(--muted); font-size: 14px; }
-
-/* Block-rijen (ochtend/middag/avond) */
-.ws-row {
-  margin-bottom: 18px;
-}
-.ws-rowlabel {
+/* Dagkop */
+.ws-day-head{
+  border: 1px solid var(--ph-border);
+  border-radius: 12px;
+  padding: 10px 12px;
   font-weight: 700;
-  margin-bottom: 6px;
-  color: var(--ink);
+  background: #fff;
 }
-.ws-rowlabel small { color: var(--muted); }
 
-/* Dropzones: 7 kolommen voor de dagen */
-.ws-rowgrid {
+/* Rij met drie blokken */
+.ws-block-row{
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  gap: var(--ws-grid-gap);
+  margin-top: 10px;
 }
 
-/* de zone waar taken in staan of naartoe gesleept worden */
-.ws-dropzone {
-  min-height: 140px;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  background: var(--paper-weak);
-  padding: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-content: flex-start;
-  transition: border-color .15s ease, background .15s ease;
-}
-.ws-dropzone:hover { border-color: #cfd6df; background: #f6f8fb; }
-
-.ws-hint {
-  width: 100%;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 8px;
-}
-
-/* ---------- Taaktegel ---------- */
-.ws-task {
-  position: relative;
-  width: 64px;
-  height: 64px;
+/* Enkel blok (dropzone) */
+.ws-dropzone{
+  min-height: 148px;
+  border: 1px dashed var(--ws-drop-border);
   border-radius: 14px;
-  border: 1px solid var(--border);
   background: #fff;
-  box-shadow: var(--shadow);
-  display: grid;
-  place-items: center;
-  padding: 6px;
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.ws-task img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 10px;
+.ws-dropzone.is-over{
+  outline: 2px solid rgba(0,110,255,.25);
+  background: #f8fbff;
+}
+.ws-dropzone-title{
+  font-size: 14px; color: var(--ph-muted);
+  margin-bottom: 6px;
 }
 
-.ws-remove {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: #fff;
-  color: #374151;
-  border: 1px solid var(--border);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background .15s ease, transform .12s ease;
-}
-.ws-remove:hover { background: #f3f4f6; transform: scale(1.03); }
-
-/* ---------- Avatars / chips (Rooster voor:) ---------- */
-.kid-pill {
+/* Task chips in dropzones */
+.ws-task-chip{
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--paper);
-  cursor: pointer;
-  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
-}
-.kid-pill:hover { box-shadow: var(--shadow); border-color: #d9dee5; }
-.kid-pill.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-weak);
-}
-.kid-pill img {
-  width: 28px;
-  height: 28px;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 8px;
   border-radius: 999px;
-  object-fit: cover;
+  background: var(--ws-chip-bg);
+  color: var(--ws-chip-text);
+  border: 1px solid rgba(0,0,0,.08);
+  line-height: 1;
+}
+.ws-chip-title{
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+}
+.ws-chip-icon{
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+}
+.ws-chip-remove{
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--ph-border);
+  cursor: pointer;
+}
+.ws-chip-remove:hover{ background: #f3f4f6; }
+
+/* Navigatie van de week (prev/today/next) */
+.ws-nav{
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.ws-nav-btn{
+  padding: 6px 10px; border-radius: 10px;
+  background: #fff; border: 1px solid var(--ph-border);
+  cursor: pointer;
+}
+.ws-nav-btn:hover{ background: #f8f8f8; }
+.ws-range{
+  font-size: 13px; color: var(--ph-muted);
 }
 
-/* ---------- Utilities voor print/klein scherm ---------- */
-@media (max-width: 720px) {
-  .ws-days,
-  .ws-rowgrid { grid-template-columns: repeat(2, 1fr); }
+/* DnD states (optioneel als je libs gebruikt die klassen zetten) */
+.dragging { opacity: .8; }
+.drop-allowed { outline: 2px solid rgba(0,110,255,.25); }
+
+/* =====================================================================
+   Kleine utilities
+   ===================================================================== */
+.text-sm { font-size: 14px; }
+.hidden { display: none !important; }
+/* === Make menu tiles smaller so they fit on one row === */
+
+/* Slightly tighter grid + enforce 5 columns on wide screens */
+.ph-grid{
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+@media (min-width: 1280px){
+  .ph-grid{
+    grid-template-columns: repeat(5, minmax(0, 1fr)); /* 5 tiles in one row */
+  }
 }
 
-@media print {
-  .btn, .badge { display: none !important; }
-  .ws-lib { page-break-inside: avoid; }
+/* Tile compaction */
+.ph-tile{
+  padding: 14px;
+  gap: 10px;
+  border-radius: 14px;
 }
+.ph-tile-icon{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+.ph-emoji{ font-size: 20px; }
 
-/* einde */
+.ph-tile-title{
+  font-weight: 700;
+  font-size: 15px;      /* slightly smaller title */
+  line-height: 1.2;
+}

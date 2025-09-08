@@ -1,275 +1,338 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Header_Parent, Header_Kids } from "./modules/header";
+// src/WeekschemaApp.jsx
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import CompactParentHeader from "./modules/parent/CompactParentHeader.jsx";
+import ParentHome from "./modules/parent/ParentHome.jsx";
+import WeekSchedulePanel from "./modules/parent/panels/WeekSchedulePanel.jsx";
+import { useHousehold } from "./hooks/useHousehold.js";
 
-// hooks – laat zoals bij jou aanwezig
-import * as FirestoreSyncMod from "./useFirestoreSync";
-import * as DeviceBindingMod from "./lib/useDeviceBinding";
-const useFirestoreSync =
-  FirestoreSyncMod.default || FirestoreSyncMod.useFirestoreSync || (() => ({}));
-const useDeviceBinding =
-  DeviceBindingMod.default || DeviceBindingMod.useDeviceBinding || (() => ({}));
-
-// ouder-panels
-import ParentHome from "./modules/parent/ParentHome";
-import WeekSchedulePanel from "./modules/parent/panels/WeekSchedulePanel";
-import BlocksPanel from "./modules/parent/panels/BlocksPanel";
-import UsersPanel from "./modules/parent/panels/UsersPanel";
-import DevicesPanel from "./modules/parent/panels/DevicesPanel";
-import LibraryPanel from "./modules/parent/panels/LibraryPanel";
-
-// kids
-import KidsDaySummary from "./modules/kind/KidsDaySummary";
-import KidsBlocks from "./modules/kind/KidsBlocks";
-
-// data (plaatsvervangers)
-import { TASK_LIBRARY } from "./data/taskLibrary";
-import { ASSIGNMENTS } from "./data/assignments";
-
-/* ---------- helpers ---------- */
-
-const DEMO_USERS = [
-  { id: "papa", name: "Papa", role: "ouder", avatar: "Papa.png" },
-  { id: "leon", name: "Leon", role: "kind", avatar: "Leon.png" },
-  { id: "lina", name: "Lina", role: "kind", avatar: "Lina.png" },
+/* ===================== Helpers / constants ===================== */
+const DAY_IDS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const BLOCKS = [
+  { id: "morning", label: "Ochtend" },
+  { id: "noon",    label: "Middag" }, // wordt "School" als blockOverrides[userId][ISO].schoolDay === true
+  { id: "evening", label: "Avond" },
 ];
-
-const LS_USER_KEY = "weekschema.currentUserId";
-const LS_MODE_KEY = "weekschema.mode";
-const LS_PIN_OK = "pin.ok";
-
-const ls = {
-  get(k) {
-    try { return localStorage.getItem(k); } catch { return null; }
-  },
-  set(k, v) {
-    try { localStorage.setItem(k, v); } catch {}
-  },
-  del(k) {
-    try { localStorage.removeItem(k); } catch {}
-  },
+const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+const toISO = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+};
+const computeMonday = (d) => {
+  const copy = new Date(d);
+  const weekday = (copy.getDay() + 6) % 7; // ma=0
+  copy.setHours(0, 0, 0, 0);
+  copy.setDate(copy.getDate() - weekday);
+  return copy;
 };
 
-function pickValidUserId(users, preferredId, deviceUserId) {
-  if (!users?.length) return null;
-  if (preferredId && users.some((u) => u.id === preferredId)) return preferredId;
-  if (deviceUserId && users.some((u) => u.id === deviceUserId)) return deviceUserId;
-  const p = users.find((u) => u.role === "ouder");
-  return p ? p.id : users[0].id;
-}
-
-/* ---------- PIN-gate ---------- */
-
-function PinGate({ required, onUnlock }) {
-  const [pin, setPin] = useState("");
-  const [err, setErr] = useState("");
-
-  if (!required) return null;
-
-  const submit = (e) => {
-    e.preventDefault();
-    if (pin.trim() === "1608") {
-      ls.set(LS_PIN_OK, "1");
-      setErr("");
-      onUnlock?.();
-    } else {
-      setErr("Foute pincode");
-    }
-  };
-
-  const logout = () => {
-    ls.del(LS_PIN_OK);
-    setPin("");
-    setErr("");
-  };
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-      role="dialog"
-      aria-modal="true"
-    >
-      <form
-        onSubmit={submit}
-        className="w-[min(92vw,460px)] rounded-2xl bg-white p-6 shadow-xl border border-neutral-200"
-      >
-        <h2 className="text-xl font-semibold mb-2">Ouder-toegang</h2>
-        <p className="text-sm text-neutral-600 mb-4">
-          Voer de pincode in om de ouder-module te openen.
-        </p>
-
-        <input
-          type="password"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          placeholder="pincode"
-          className="w-full rounded-xl border border-neutral-300 px-3 py-2 mb-3"
-          autoFocus
-        />
-
-        {err && <div className="text-red-600 text-sm mb-3">{err}</div>}
-
-        <div className="flex items-center gap-2 justify-end">
-          <button
-            type="button"
-            onClick={logout}
-            className="px-3 py-2 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50"
-          >
-            Uitloggen
-          </button>
-          <button
-            type="submit"
-            className="px-3 py-2 rounded-xl border border-blue-500 bg-blue-50 hover:bg-blue-100"
-          >
-            Ontgrendel
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-/* ---------- hoofdcomponent ---------- */
+/* Kleine helper om een picto-<img> node te maken (werkt in LIB_BY_ID) */
+const P = (filename, alt = "") => (
+  <img
+    src={`/pictos/${filename}`}
+    alt={alt}
+    style={{ width: 20, height: 20, objectFit: "contain", display: "block" }}
+    draggable={false}
+  />
+);
 
 export default function WeekschemaApp() {
-  const { users: fsUsers } = useFirestoreSync() || {};
-  const { currentDevice } = useDeviceBinding() || {};
+  /* ===================== View routing ===================== */
+  const [activeView, setActiveView] = useState("home"); // 'home'|'weekschedule'|'blocks'|'users'|'devices'|'library'
 
-  const users = fsUsers?.length ? fsUsers : DEMO_USERS;
-  const deviceRole = currentDevice?.role || "ouder";
+  /* ===================== Firestore household ===================== */
+  const famId = import.meta.env.VITE_FAM_ID || "default";
+  const {
+    ready: isFirestoreReady,
+    data: hh,
+    libraryById: HH_LIB_BY_ID,
+    planned: HH_PLANNED,
+    blockOverrides: HH_BLOCKS,
+  } = useHousehold(famId);
 
-  // modus
-  const [mode, setMode] = useState(() => {
-    const m = ls.get(LS_MODE_KEY);
-    if (m === "parent" || m === "kid") return m;
-    return deviceRole === "kind" ? "kid" : "parent";
+  /* ===================== Users (avatars in /public/avatars) ===================== */
+  const [users, setUsers] = useState([
+    { id: "papa", name: "Papa", role: "Ouder", avatar: "/avatars/Papa.png" },
+    { id: "leon", name: "Leon", role: "Kind",  avatar: "/avatars/Leon.png" },
+    { id: "lina", name: "Lina", role: "Kind",  avatar: "/avatars/Lina.png" },
+  ]);
+  // Tip: als je members in Firestore bewaart: setUsers(hh.members)
+
+  // Actief kind (voor weekschema/blokken)
+  const [currentUserId, setCurrentUserId] = useState(() => {
+    const firstKid = users.find(u => (u.role || "").toLowerCase() === "kind");
+    return firstKid?.id;
   });
-
-  // actieve user
-  const [activeUserId, setActiveUserId] = useState(() => ls.get(LS_USER_KEY));
   useEffect(() => {
-    if (!users.length) return;
-    const fixed = pickValidUserId(users, activeUserId, currentDevice?.userId);
-    if (fixed && fixed !== activeUserId) {
-      setActiveUserId(fixed);
-      ls.set(LS_USER_KEY, fixed);
+    if (!users.some(u => u.id === currentUserId)) {
+      const firstKid = users.find(u => (u.role || "").toLowerCase() === "kind");
+      setCurrentUserId(firstKid?.id);
     }
-    if (!fixed) ls.del(LS_USER_KEY);
-  }, [users, activeUserId, currentDevice?.userId]);
+  }, [users, currentUserId]);
 
-  useEffect(() => { if (activeUserId) ls.set(LS_USER_KEY, activeUserId); }, [activeUserId]);
-  useEffect(() => { ls.set(LS_MODE_KEY, mode); }, [mode]);
+  /* ===================== Library (pictos uit /public/pictos) ===================== */
+  // Gebruik Firestore data als die er is (verwacht structuur { byId: {taskId:{id,title,icon?...}}, ... } in hook),
+  // anders een nette fallback met echte picto-afbeeldingen:
+  const LIB_BY_ID = useMemo(() => {
+    const fromFs =
+      HH_LIB_BY_ID && Object.keys(HH_LIB_BY_ID).length > 0 ? HH_LIB_BY_ID : null;
+    if (fromFs) return fromFs;
 
-  const activeUser = useMemo(
-    () => users.find((u) => u.id === activeUserId) || users[0] || null,
-    [users, activeUserId]
+    return {
+      t_opstaan:      { id: "t_opstaan",      title: "Opstaan",           icon: P("Opstaan.png", "Opstaan") },
+      t_ontbijt:      { id: "t_ontbijt",      title: "Ontbijt",           icon: P("Ontbijt.png", "Ontbijt") },
+      t_aankleden:    { id: "t_aankleden",    title: "Aankleden",         icon: P("Aankleden.png", "Aankleden") },
+      t_tanden:       { id: "t_tanden",       title: "Tanden poetsen",    icon: P("Tandenpoetsen.png", "Tanden poetsen") },
+      t_school:       { id: "t_school",       title: "School",            icon: P("Pico_School.png", "School") },
+      t_inbad:        { id: "t_inbad",        title: "In bad",            icon: P("Pico_InBad.png", "In bad") },
+      t_pyjama:       { id: "t_pyjama",       title: "Pyjama aandoen",    icon: P("Pyjama aandoen.png", "Pyjama") },
+      t_slapen:       { id: "t_slapen",       title: "Slapen",            icon: P("Pico_slapen.png", "Slapen") },
+      t_buiten:       { id: "t_buiten",       title: "Buiten spelen",     icon: P("Buiten spelen.png", "Buiten spelen") },
+      t_spelen:       { id: "t_spelen",       title: "Spelen",            icon: P("Spelen.png", "Spelen") },
+      t_lezen:        { id: "t_lezen",        title: "Lezen",             icon: P("Lezen.png", "Lezen") },
+      t_tablet:       { id: "t_tablet",       title: "Tablet",            icon: P("Tablet.png", "Tablet") },
+      t_tv:           { id: "t_tv",           title: "TV kijken",         icon: P("Tv kijken.png", "TV kijken") },
+      t_toilet:       { id: "t_toilet",       title: "Naar het toilet",   icon: P("Naar het toilet.png", "Naar het toilet") },
+      t_naarschool:   { id: "t_naarschool",   title: "Naar school gaan",  icon: P("Naar school gaan.png", "Naar school gaan") },
+      t_naarschool2:  { id: "t_naarschool2",  title: "Naar school (2)",   icon: P("Naar school gaan 2.png", "Naar school gaan") },
+      t_avondAVG:     { id: "t_avondAVG",     title: "Avond eten (AVG)",  icon: P("Avond eten AVG.png", "Avond eten") },
+      t_avondSPAG:    { id: "t_avondSPAG",    title: "Avond eten (Spag.)",icon: P("Avond eten SPAGHETTI.png", "Avond eten") },
+      t_douchen:      { id: "t_douchen",      title: "Douchen",           icon: P("Douchen.png", "Douchen") },
+      t_inbad_plain:  { id: "t_inbad_plain",  title: "In bad (plain)",    icon: P("in bad.png", "In bad") },
+    };
+  }, [HH_LIB_BY_ID]);
+
+  const buildFilteredLibrary = useCallback(
+    (userId /*, weekStart */) => {
+      const u = users.find(x => x.id === userId);
+      if (!u) return Object.values(LIB_BY_ID);
+      const isKid = (u.role || "").toLowerCase() === "kind";
+      return isKid ? Object.values(LIB_BY_ID) : [];
+    },
+    [users, LIB_BY_ID]
   );
 
-  // ouder-navigatie + highlight
-  const [parentView, setParentView] = useState("home");
-  const [lastOpenedView, setLastOpenedView] = useState(null);
+  /* ===================== Assignments (schema) ===================== */
+  const emptyAssignments = useMemo(() => {
+    const base = {};
+    for (const d of DAY_IDS) base[d] = { morning: [], noon: [], evening: [] };
+    return base;
+  }, []);
 
-  // dagstatistiek kids
-  const [dayStats, setDayStats] = useState({ completed: 0, total: 0 });
+  // per kind
+  const [assignmentsPerUser, setAssignmentsPerUser] = useState({});
+  // sync vanuit Firestore "planned" (verwacht vorm: planned[userId][dayId][blockId] = [taskId,...])
+  useEffect(() => {
+    if (HH_PLANNED && typeof HH_PLANNED === "object") {
+      setAssignmentsPerUser(HH_PLANNED);
+    }
+  }, [HH_PLANNED]);
 
-  // PIN-gate: alleen in parent-modus nodig
-  const pinRequired = deviceRole === "ouder" && mode === "parent" && ls.get(LS_PIN_OK) !== "1";
+  // actuele assignments voor het actieve kind
+  const assignments = useMemo(() => {
+    if (!currentUserId) return emptyAssignments;
+    return assignmentsPerUser[currentUserId] || emptyAssignments;
+  }, [assignmentsPerUser, currentUserId, emptyAssignments]);
 
-  // acties
-  const openChildFromParent = (kidId) => {
-    setActiveUserId(kidId);
-    setMode("kid");
-  };
-
-  const goBackToParent = () => {
-    setMode("parent");
-    setParentView("home");
-  };
-
-  const canGoBack = deviceRole === "ouder" && mode === "kid";
-
-  return (
-    <div className="max-w-6xl mx-auto p-4">
-      {/* Demo-badge */}
-      {(deviceRole === "ouder" && mode === "parent" && (!fsUsers || fsUsers.length === 0)) && (
-        <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-          Demo-modus: Firestore leeg/niet geladen — toon voorbeeldgebruikers.
-        </div>
-      )}
-
-      {/* ---------- OUDER ---------- */}
-      {deviceRole === "ouder" && mode === "parent" && (
-        <>
-          {/* één ouder-header */}
-          <Header_Parent
-            users={users}
-            activeUserId={activeUser?.id}
-            onFocusUser={setActiveUserId}
-            onOpenChild={openChildFromParent}
-          />
-
-          {/* PIN-gate */}
-          <PinGate
-            required={pinRequired}
-            onUnlock={() => { /* opnieuw renderen */ }}
-          />
-
-          {/* menu of panelen */}
-          {parentView === "home" ? (
-            <div className="mt-4">
-              <ParentHome
-                activeView={lastOpenedView}
-                onOpen={(v) => { setParentView(v); setLastOpenedView(v); }}
-              />
-            </div>
-          ) : (
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => setParentView("home")}
-                className="mb-3 px-3 py-2 rounded-xl border border-neutral-200 bg-white/80 hover:bg-white shadow-sm"
-              >
-                ← Terug naar overzicht
-              </button>
-
-              {parentView === "weekschedule" && (
-                <WeekSchedulePanel userId={activeUser?.id} users={users} />
-              )}
-              {parentView === "blocks" && (
-                <BlocksPanel userId={activeUser?.id} users={users} />
-              )}
-              {parentView === "users" && <UsersPanel users={users} />}
-              {parentView === "devices" && <DevicesPanel />}
-              {parentView === "library" && <LibraryPanel />}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ---------- KIND ---------- */}
-      {(deviceRole === "kind" || (deviceRole === "ouder" && mode === "kid")) && (
-        <>
-          <Header_Kids user={activeUser} canGoBack={canGoBack} onBack={goBackToParent} />
-
-          <KidsDaySummary
-            date={new Date()}
-            completed={dayStats.completed}
-            total={dayStats.total}
-          />
-
-          <KidsBlocks
-            userId={activeUser?.id}
-            userKey={(activeUser?.id || activeUser?.name || "").toLowerCase()}
-            library={TASK_LIBRARY}
-            assignments={
-              ASSIGNMENTS[(activeUser?.id || activeUser?.name || "").toLowerCase()] || []
-            }
-            displayMode={(activeUser?.name || "").toLowerCase() === "lina" ? "picto" : "text"}
-            onStatsChange={setDayStats}
-          />
-        </>
-      )}
-    </div>
+  // DnD handlers
+  const onDropTask = useCallback(
+    (dayId, blockId, taskId, from) => {
+      if (!currentUserId) return;
+      setAssignmentsPerUser(prev => {
+        const forUser = { ...(prev[currentUserId] || emptyAssignments) };
+        // verplaats: verwijder uit bron
+        if (from?.dayId && from?.blockId) {
+          forUser[from.dayId] = { ...forUser[from.dayId] };
+          forUser[from.dayId][from.blockId] = forUser[from.dayId][from.blockId].filter(
+            id => id !== taskId
+          );
+        }
+        // voeg toe aan doel
+        forUser[dayId] = { ...forUser[dayId] };
+        if (!forUser[dayId][blockId].includes(taskId)) {
+          forUser[dayId][blockId] = [...forUser[dayId][blockId], taskId];
+        }
+        return { ...prev, [currentUserId]: forUser };
+      });
+    },
+    [currentUserId, emptyAssignments]
   );
+
+  const removeTask = useCallback(
+    (dayId, blockId, taskId) => {
+      if (!currentUserId) return;
+      setAssignmentsPerUser(prev => {
+        const forUser = { ...(prev[currentUserId] || emptyAssignments) };
+        forUser[dayId] = { ...forUser[dayId] };
+        forUser[dayId][blockId] = forUser[dayId][blockId].filter(id => id !== taskId);
+        return { ...prev, [currentUserId]: forUser };
+      });
+    },
+    [currentUserId, emptyAssignments]
+  );
+
+  /* ===================== Block-overrides (schooldag) ===================== */
+  // Komt uit Firestore document (mag leeg zijn)
+  const blockOverrides = HH_BLOCKS || {};
+
+  /* ===================== Week navigatie ===================== */
+  const [monday, setMonday] = useState(() => computeMonday(new Date()));
+  const gotoPrevWeek = () => setMonday(m => addDays(m, -7));
+  const gotoNextWeek = () => setMonday(m => addDays(m, +7));
+  const gotoThisWeek = () => setMonday(computeMonday(new Date()));
+
+  /* ===================== Trace (dev) ===================== */
+  useEffect(() => {
+    console.log("[WeekschemaApp] view:", activeView, "household:", famId, "FS ready:", isFirestoreReady);
+  }, [activeView, famId, isFirestoreReady]);
+
+  /* ===================== Views ===================== */
+  const renderView = () => {
+    switch (activeView) {
+      case "weekschedule":
+        return (
+          <>
+            <CompactParentHeader
+              users={users}
+              currentUserId={currentUserId}
+              onFocusUser={setCurrentUserId}
+              famId={famId}
+              isFirestoreReady={isFirestoreReady}
+              forceAdminActive={false} // in inhoud-views tonen we het kind als actief
+            />
+            <WeekSchedulePanel
+              // library
+              LIB_BY_ID={LIB_BY_ID}
+              filteredLibrary={buildFilteredLibrary(currentUserId, monday)}
+              buildFilteredLibrary={buildFilteredLibrary}
+              // schema
+              assignments={assignments}
+              DAY_IDS={DAY_IDS}
+              BLOCKS={BLOCKS}
+              // week
+              monday={monday}
+              addDays={addDays}
+              gotoPrevWeek={gotoPrevWeek}
+              gotoThisWeek={gotoThisWeek}
+              gotoNextWeek={gotoNextWeek}
+              // DnD
+              onDropTask={onDropTask}
+              removeTask={removeTask}
+              // “Middag” → “School”
+              blockOverrides={blockOverrides}
+              toISO={toISO}
+            />
+          </>
+        );
+
+      case "blocks":
+        return (
+          <>
+            <CompactParentHeader
+              users={users}
+              currentUserId={currentUserId}
+              onFocusUser={setCurrentUserId}
+              famId={famId}
+              isFirestoreReady={isFirestoreReady}
+              forceAdminActive={false}
+            />
+            <div className="ph-card">
+              <div className="ph-headbar"><span className="ph-chip">Blokken beheren</span></div>
+              <div className="ph-card-body ph-card-body--tight">
+                <p className="text-sm" style={{ color: "rgba(0,0,0,.66)" }}>
+                  Hier komt je Blokken-beheer. Koppel <code>blockOverrides[userId][ISO].schoolDay</code> voor weekschema-labels.
+                </p>
+              </div>
+            </div>
+          </>
+        );
+
+      case "users":
+        return (
+          <>
+            <CompactParentHeader
+              users={users}
+              currentUserId={currentUserId}
+              onFocusUser={setCurrentUserId}
+              famId={famId}
+              isFirestoreReady={isFirestoreReady}
+            />
+            <div className="ph-card">
+              <div className="ph-headbar"><span className="ph-chip">Gebruikers</span></div>
+              <div className="ph-card-body ph-card-body--tight">
+                <p className="text-sm" style={{ color: "rgba(0,0,0,.66)" }}>
+                  Beheer gebruikers (rollen, avatars, device-binding, …).
+                </p>
+              </div>
+            </div>
+          </>
+        );
+
+      case "devices":
+        return (
+          <>
+            <CompactParentHeader
+              users={users}
+              currentUserId={currentUserId}
+              onFocusUser={setCurrentUserId}
+              famId={famId}
+              isFirestoreReady={isFirestoreReady}
+            />
+            <div className="ph-card">
+              <div className="ph-headbar"><span className="ph-chip">Devices</span></div>
+              <div className="ph-card-body ph-card-body--tight">
+                <p className="text-sm" style={{ color: "rgba(0,0,0,.66)" }}>
+                  Devices-overzicht en koppelingen komen hier.
+                </p>
+              </div>
+            </div>
+          </>
+        );
+
+      case "library":
+        return (
+          <>
+            <CompactParentHeader
+              users={users}
+              currentUserId={currentUserId}
+              onFocusUser={setCurrentUserId}
+              famId={famId}
+              isFirestoreReady={isFirestoreReady}
+            />
+            <div className="ph-card">
+              <div className="ph-headbar"><span className="ph-chip">Bibliotheek</span></div>
+              <div className="ph-card-body ph-card-body--tight">
+                <p className="text-sm" style={{ color: "rgba(0,0,0,.66)" }}>
+                  Bibliotheekbeheer (pictogrammen/taken) komt hier.
+                </p>
+              </div>
+            </div>
+          </>
+        );
+
+      case "home":
+      default:
+        return (
+          <>
+            {/* Op Home willen we Papa (ouder) als actief kader */}
+            <CompactParentHeader
+              users={users}
+              currentUserId={currentUserId}
+              onFocusUser={setCurrentUserId}
+              famId={famId}
+              isFirestoreReady={isFirestoreReady}
+              forceAdminActive
+            />
+            <ParentHome
+              activeView={activeView}
+              onOpen={setActiveView}
+              title="Menu"
+            />
+          </>
+        );
+    }
+  };
+
+  return <div className="ws-app">{renderView()}</div>;
 }

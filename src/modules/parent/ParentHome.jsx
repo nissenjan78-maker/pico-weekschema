@@ -1,73 +1,101 @@
-import React from "react";
+// src/modules/parent/ParentHome.jsx
+import React, { useEffect, useMemo, useRef, useCallback } from "react";
 
 /**
- * Ouder-menu (chip + tegels)
+ * Ouder-menu (kaart met tegels)
  * Props:
  *  - onOpen(viewId): 'weekschedule'|'blocks'|'users'|'devices'|'library'
- *  - activeView: laatst geopende tegel (blauwe ring)
+ *  - activeView: string
+ *  - title?: string (default "Menu")
  */
-export default function ParentHome({ onOpen, activeView }) {
-  const tiles = [
-    { id: "weekschedule", title: "Weekschema",       subtitle: "Open weekschema",       icon: "📅" },
-    { id: "blocks",       title: "Blokken beheren",  subtitle: "Open blokken beheren",  icon: "⏱️" },
-    { id: "users",        title: "Gebruikers",       subtitle: "Open gebruikers",       icon: "👨‍👩‍👧‍👦" },
-    { id: "devices",      title: "Devices",          subtitle: "Open devices",          icon: "💻" },
-    { id: "library",      title: "Bibliotheek",      subtitle: "Open bibliotheek",      icon: "📚" },
-  ];
+export default function ParentHome({ onOpen, activeView, title = "Menu" }) {
+  const tiles = useMemo(
+    () => [
+      { id: "weekschedule", title: "Weekschema",       icon: "📅" },
+      { id: "blocks",       title: "Blokken beheren",  icon: "⏱️" },
+      { id: "users",        title: "Gebruikers",       icon: "👨‍👩‍👧‍👦" },
+      { id: "devices",      title: "Devices",          icon: "💻" },
+      { id: "library",      title: "Bibliotheek",      icon: "📚" },
+    ],
+    []
+  );
+
+  const btnRefs = useRef([]);
+
+  const handleOpen = useCallback((id) => {
+    if (typeof onOpen === "function") onOpen(id);
+  }, [onOpen]);
+
+  // Hotkeys 1–9
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.altKey || e.metaKey || e.ctrlKey) return;
+      const n = Number(e.key);
+      if (!Number.isNaN(n) && n >= 1 && n <= tiles.length) {
+        e.preventDefault();
+        const idx = n - 1;
+        handleOpen(tiles[idx].id);
+        btnRefs.current[idx]?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tiles, handleOpen]);
+
+  // Pijltjestoetsen in grid
+  const onTileKeyDown = useCallback((e, idx) => {
+    const width = window.innerWidth;
+    const cols = width >= 1280 ? 5 : width >= 768 ? 3 : width >= 640 ? 2 : 1;
+    const go = (i) => btnRefs.current[i]?.focus();
+
+    switch (e.key) {
+      case "ArrowRight": e.preventDefault(); go(Math.min(idx + 1, tiles.length - 1)); break;
+      case "ArrowLeft":  e.preventDefault(); go(Math.max(idx - 1, 0)); break;
+      case "ArrowDown":  e.preventDefault(); go(Math.min(idx + cols, tiles.length - 1)); break;
+      case "ArrowUp":    e.preventDefault(); go(Math.max(idx - cols, 0)); break;
+      case "Enter":
+      case " ":
+        e.preventDefault(); handleOpen(tiles[idx].id); break;
+      default: break;
+    }
+  }, [tiles, handleOpen]);
 
   return (
-    <div className="space-y-4">
-      <div className="text-center">
-        <span className="inline-block px-4 py-1 rounded-full border border-neutral-200 bg-white/80 shadow-sm text-sm font-semibold">
-          Ouder-menu
+    <div className="ph-card">
+      {/* Headbar: label + tip op één lijn (CSS zorgt dat dit niet wrapt) */}
+      <div className="ph-headbar">
+        <span className="ph-chip">{title}</span>
+        <span className="ph-tip-inline">
+          Tip: gebruik 1–{tiles.length} om snel te openen · pijltjestoetsen om te navigeren
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        {tiles.map((t) => (
-          <Tile
-            key={t.id}
-            active={activeView === t.id}
-            title={t.title}
-            subtitle={t.subtitle}
-            icon={t.icon}
-            onClick={() => onOpen?.(t.id)}
-          />
-        ))}
+      {/* Inhoud (tegels hoog onder de headbar) */}
+      <div className="ph-card-body ph-card-body--tight ph-card-body--no-topgap">
+        <div className="ph-grid" role="grid" aria-label="Menu opties">
+          {tiles.map((t, i) => (
+            <button
+              key={t.id}
+              ref={(el) => (btnRefs.current[i] = el)}
+              type="button"
+              className={`ph-tile ${activeView === t.id ? "is-active" : ""}`}
+              role="gridcell"
+              aria-selected={activeView === t.id ? "true" : "false"}
+              aria-label={`${t.title} (${i + 1})`}
+              onClick={() => handleOpen(t.id)}
+              onKeyDown={(e) => onTileKeyDown(e, i)}
+            >
+              <div className="ph-tile-icon" aria-hidden>
+                <span className="ph-emoji">{t.icon}</span>
+              </div>
+              <div className="min-w-0 ph-tile-text">
+                <div className="ph-tile-title">{t.title}</div>
+                {/* Geen ondertitel “Open …” meer */}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
-  );
-}
-
-function Tile({ active, title, subtitle, icon, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "w-full text-left rounded-2xl border bg-white/80",
-        "border-neutral-200 hover:bg-white shadow-sm transition-colors",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400",
-        active ? "ring-2 ring-blue-400" : "",
-      ].join(" ")}
-    >
-      <div className="p-4 flex items-center gap-3">
-        <div
-          className={[
-            "flex items-center justify-center rounded-xl",
-            "w-12 h-12 text-xl select-none",
-            active ? "bg-blue-50" : "bg-neutral-100",
-          ].join(" ")}
-          aria-hidden="true"
-        >
-          {icon}
-        </div>
-
-        <div className="min-w-0">
-          <div className="font-semibold leading-tight">{title}</div>
-          <div className="text-sm text-neutral-500">{subtitle}</div>
-        </div>
-      </div>
-    </button>
   );
 }

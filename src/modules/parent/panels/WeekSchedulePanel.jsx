@@ -1,366 +1,277 @@
-// src/modules/parent/panels/WeekSchedulePanel.jsx
-import React, { useMemo, useState, useEffect } from "react";
-import { TASK_LIBRARY } from "../../../data/taskLibrary";
+import React, { useMemo, useCallback } from "react";
 
-/* ────────────────────────────────────────────────────────────
-   Kleine helpers – geen externe date-fns dependency nodig
-   ──────────────────────────────────────────────────────────── */
-const DAY_IDS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
-const DAY_LABELS = { ma: "ma", di: "di", wo: "wo", do: "do", vr: "vr", za: "za", zo: "zo" };
-const BLOCKS = [
-  { id: "morning", label: "Ochtend", time: "07:00–08:15" },
-  { id: "midday",  label: "Middag",  time: "12:00–13:30" },
-  { id: "evening", label: "Avond",   time: "18:30–20:30" },
-];
+/**
+ * Props (alles blijft backward-compatible):
+ *  required/bestaand:
+ *   - assignments, LIB_BY_ID, DAY_IDS, BLOCKS, monday, addDays,
+ *     gotoPrevWeek, gotoThisWeek, gotoNextWeek, onDropTask, removeTask
+ *
+ *  optional/nieuw:
+ *   - users: Array<{id,name,role,avatar?}>
+ *   - activeUserId: string
+ *   - onFocusUser: (id:string)=>void
+ *   - blockOverrides: { [userId]: { [isoDate]: { schoolDay?: boolean } } }
+ *   - toISO?: (date: Date) => string
+ *   - filteredLibrary  |  buildFilteredLibrary?: (userId?:string, weekStart?:Date)=>Array
+ *   - AvatarComponent?: React.FC<{src?:string, alt?:string, size?:number}>
+ */
+export default function WeekSchedulePanel(props) {
+  const {
+    // core
+    filteredLibrary,
+    assignments,
+    LIB_BY_ID,
+    DAY_IDS,
+    BLOCKS,
+    monday,
+    addDays,
+    gotoPrevWeek,
+    gotoThisWeek,
+    gotoNextWeek,
+    onDropTask,
+    removeTask,
+    // nieuw
+    users,
+    activeUserId,
+    onFocusUser,
+    blockOverrides,
+    toISO,
+    buildFilteredLibrary,
+    AvatarComponent,
+  } = props;
 
-function startOfWeekMonday(d) {
-  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const day = date.getDay();           // 0 = zo, 1 = ma, ...
-  const diff = (day + 6) % 7;          // maandag = 0
-  date.setDate(date.getDate() - diff);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-function addDays(date, n) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-function fmtISO(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
+  // ---------- helpers & fallbacks ----------
+  const SAFE_DAY_IDS = Array.isArray(DAY_IDS) && DAY_IDS.length === 7
+    ? DAY_IDS
+    : ["mon","tue","wed","thu","fri","sat","sun"];
 
-/* ────────────────────────────────────────────────────────────
-   Opslag helpers – per kind én per week (maandag ISO)
-   assignments:
-   {
-     "ma": { morning: [taskId,...], midday: [...], evening: [...] },
-     "di": {...}, ...
-   }
-   ──────────────────────────────────────────────────────────── */
-function storageKey(userId, mondayISO) {
-  return `weekschema.assignments.${userId}.${mondayISO}`;
-}
-function loadAssignments(userId, mondayISO) {
-  try {
-    const raw = localStorage.getItem(storageKey(userId, mondayISO));
-    if (!raw) return {};
-    return JSON.parse(raw) || {};
-  } catch {
-    return {};
-  }
-}
-function saveAssignments(userId, mondayISO, data) {
-  localStorage.setItem(storageKey(userId, mondayISO), JSON.stringify(data));
-}
+  const SAFE_BLOCKS = Array.isArray(BLOCKS) && BLOCKS.length
+    ? BLOCKS
+    : [{id:"morning",label:"Ochtend"},{id:"noon",label:"Middag"},{id:"evening",label:"Avond"}];
 
-/* ────────────────────────────────────────────────────────────
-   Snelle lookup map voor TASK_LIBRARY
-   ──────────────────────────────────────────────────────────── */
-const LIB_BY_ID = (() => {
-  const map = {};
-  (TASK_LIBRARY || []).forEach((t) => (map[t.id] = t));
-  return map;
-})();
+  const SAFE_LIB_BY_ID = LIB_BY_ID ?? {};
+  const safeAddDays = typeof addDays === "function"
+    ? addDays
+    : (d,n)=> new Date(d.getTime() + n*86400000);
 
-/* ────────────────────────────────────────────────────────────
-   Component
-   props:
-     - users: [{ id, name, role, avatar }, ...]
-     - userId?: vooraf geselecteerd kind
-   ──────────────────────────────────────────────────────────── */
-export default function WeekSchedulePanel({ users = [], userId }) {
-  // start met gekozen kind of eerste kind of eerste user of 'leon'
-  const defaultUserId =
-    userId ||
-    (users.find((u) => u.role === "kind")?.id ||
-      users[0]?.id ||
-      "leon");
+  const weekMonday = (monday instanceof Date && !isNaN(monday))
+    ? monday
+    : (() => {
+        const now = new Date();
+        const day = (now.getDay() + 6) % 7; // ma=0
+        const m = new Date(now); m.setHours(0,0,0,0); m.setDate(now.getDate()-day);
+        return m;
+      })();
 
-  const [selectedUserId, setSelectedUserId] = useState(defaultUserId);
+  const iso = toISO ?? ((d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${dd}`;
+  });
 
-  // huidige week (vanaf maandag)
-  const [monday, setMonday] = useState(() => startOfWeekMonday(new Date()));
-  const mondayISO = useMemo(() => fmtISO(monday), [monday]);
+  // ---------- alleen kinderen in de chipbar ----------
+  const kidUsers = useMemo(() => {
+    if (!Array.isArray(users)) return [];
+    return users.filter(u => (u.role || "").toLowerCase() === "kind");
+  }, [users]);
 
-  // taken-indeling voor deze user + week
-  const [assignments, setAssignments] = useState({});
-  useEffect(() => {
-    setAssignments(loadAssignments(selectedUserId, mondayISO));
-  }, [selectedUserId, mondayISO]);
+  // active kind (als activeUserId geen kind is → kies eerste kind)
+  const currentUserId = useMemo(() => {
+    if (kidUsers.length === 0) return undefined;
+    const activeIsKid = kidUsers.some(k => k.id === activeUserId);
+    return activeIsKid ? activeUserId : kidUsers[0].id;
+  }, [kidUsers, activeUserId]);
 
-  useEffect(() => {
-    saveAssignments(selectedUserId, mondayISO, assignments);
-  }, [selectedUserId, mondayISO, assignments]);
+  // ---------- library (user-aware + fallback) ----------
+  const SAFE_LIBRARY = useMemo(() => {
+    if (typeof buildFilteredLibrary === "function") {
+      try {
+        const arr = buildFilteredLibrary(currentUserId, weekMonday);
+        if (Array.isArray(arr)) return arr;
+      } catch {}
+    }
+    if (Array.isArray(filteredLibrary)) return filteredLibrary;
+    const all = Object.values(SAFE_LIB_BY_ID);
+    return all;
+  }, [buildFilteredLibrary, currentUserId, weekMonday, filteredLibrary, SAFE_LIB_BY_ID]);
 
-  // bibliotheek filter
-  const [search, setSearch] = useState("");
-  const [onlySchool, setOnlySchool] = useState(false);
+  // ---------- daglabels (nl-BE dd/mm) ----------
+  const dayLabels = useMemo(() => {
+    const fmt = (d) =>
+      new Intl.DateTimeFormat("nl-BE", { weekday: "short", day: "2-digit", month: "2-digit" }).format(d);
+    return SAFE_DAY_IDS.map((_, i) => fmt(safeAddDays(weekMonday, i)));
+  }, [SAFE_DAY_IDS, weekMonday, safeAddDays]);
 
-  const filteredLibrary = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (TASK_LIBRARY || []).filter((t) => {
-      if (onlySchool && !(t.tags || []).includes("school")) return false;
-      if (!q) return true;
-      const hay = `${t.id} ${t.name || ""} ${(t.tags || []).join(" ")}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [search, onlySchool]);
+  const weekLabel = useMemo(() => {
+    const s = safeAddDays(weekMonday, 0);
+    const e = safeAddDays(weekMonday, 6);
+    const f = new Intl.DateTimeFormat("nl-BE", { day: "2-digit", month: "2-digit" });
+    return `${f.format(s)} – ${f.format(e)}`;
+  }, [weekMonday, safeAddDays]);
 
-  // add / remove in rooster
-  const addTask = (dayId, blockId, taskId) => {
-    setAssignments((prev) => {
-      const next = { ...prev };
-      const day = next[dayId] || {};
-      const arr = day[blockId] ? [...day[blockId]] : [];
-      arr.push(taskId);
-      day[blockId] = arr;
-      next[dayId] = day;
-      return next;
-    });
-  };
-  const removeTask = (dayId, blockId, index) => {
-    setAssignments((prev) => {
-      const next = { ...prev };
-      const day = next[dayId] || {};
-      const arr = (day[blockId] || []).slice(0);
-      arr.splice(index, 1);
-      day[blockId] = arr;
-      next[dayId] = day;
-      return next;
-    });
-  };
+  // ---------- bloklabel: “School” i.p.v. “Middag” wanneer schoolDay === true ----------
+  const labelFor = useCallback(
+    (blkId, dayIdx, fallback) => {
+      if (blkId !== "noon") return fallback;
+      if (!currentUserId || !blockOverrides) return fallback;
+      const d = safeAddDays(weekMonday, dayIdx);
+      const cfg = blockOverrides?.[currentUserId]?.[iso(d)];
+      return cfg?.schoolDay ? "School" : fallback;
+    },
+    [currentUserId, blockOverrides, iso, weekMonday, safeAddDays]
+  );
 
-  // DnD
-  const onDragStartTask = (e, taskId) => {
-    e.dataTransfer.setData("application/x-task-id", taskId);
-    e.dataTransfer.setData("text/plain", taskId); // fallback
-  };
-  const onDropTask = (e, dayId, blockId) => {
+  // ---------- DnD ----------
+  const onDragFromLib = useCallback((e, taskId) => {
+    e.dataTransfer.setData("application/x-task-id", String(taskId));
+    e.dataTransfer.effectAllowed = "copyMove";
+  }, []);
+  const onDragFromCell = useCallback((e, taskId, from) => {
+    e.dataTransfer.setData("application/x-task-id", String(taskId));
+    e.dataTransfer.setData("application/x-from-day", from.dayId);
+    e.dataTransfer.setData("application/x-from-block", from.blockId);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+  const onDragOver = useCallback((e) => {
+    e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+    e.currentTarget.dataset.dragover = "true";
+  }, []);
+  const onDragLeave = useCallback((e) => { e.currentTarget.dataset.dragover = "false"; }, []);
+  const onDropToCell = useCallback((e, dayId, blockId) => {
     e.preventDefault();
-    const taskId =
-      e.dataTransfer.getData("application/x-task-id") ||
-      e.dataTransfer.getData("text/plain");
+    const taskId = e.dataTransfer.getData("application/x-task-id");
     if (!taskId) return;
-    addTask(dayId, blockId, taskId);
-  };
-
-  const gotoPrevWeek = () => setMonday((m) => addDays(m, -7));
-  const gotoNextWeek = () => setMonday((m) => addDays(m, 7));
-  const gotoThisWeek = () => setMonday(startOfWeekMonday(new Date()));
-
-  const kids = users.filter((u) => u.role === "kind");
+    const fromDay = e.dataTransfer.getData("application/x-from-day") || undefined;
+    const fromBlock = e.dataTransfer.getData("application/x-from-block") || undefined;
+    e.currentTarget.dataset.dragover = "false";
+    props.onDropTask?.(dayId, blockId, taskId, fromDay && fromBlock ? { dayId: fromDay, blockId: fromBlock } : undefined);
+  }, [props]);
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Terug-knop (optioneel) */}
-      <button
-        onClick={() => window.history.back()}
-        className="px-3 py-2 rounded-xl border border-neutral-200 bg-white/80 hover:bg-white shadow-sm mb-3"
-      >
-        ← Terug naar overzicht
-      </button>
-
-      {/* Kind-selectie */}
-      {kids.length > 0 && (
-        <div className="mb-4">
-          <div className="text-lg font-semibold mb-2">Rooster voor:</div>
-          <div className="flex gap-3">
-            {kids.map((k) => {
-              const isActive = k.id === selectedUserId;
-              const avSrc = k.avatar?.startsWith("/") ? k.avatar : `/avatars/${k.avatar || ""}`;
+    <div className="ws-layout">
+      {/* ------- Bibliotheek (links) ------- */}
+      <aside className="ws-lib-panel">
+        {/* Chipbar: alleen kinderen */}
+        {kidUsers.length > 0 && (
+          <div className="ws-userbar">
+            {kidUsers.map((u) => {
+              const active = u.id === currentUserId;
               return (
                 <button
-                  key={k.id}
-                  onClick={() => setSelectedUserId(k.id)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${
-                    isActive ? "border-blue-400 ring-2 ring-blue-200" : "border-neutral-200"
-                  } bg-white hover:bg-neutral-50`}
+                  key={u.id}
+                  type="button"
+                  className={`ws-userchip${active ? " is-active" : ""}`}
+                  onClick={() => props.onFocusUser?.(u.id)}
+                  title={u.name}
                 >
-                  {avSrc ? (
-                    <img
-                      src={avSrc}
-                      alt={k.name}
-                      style={{ width: 28, height: 28, borderRadius: 999, objectFit: "cover" }}
-                    />
+                  {AvatarComponent ? (
+                    <AvatarComponent src={u.avatar} alt={u.name} size={22} />
+                  ) : u.avatar ? (
+                    <img className="ws-userchip-img" src={u.avatar} alt="" />
                   ) : (
-                    <div style={{ width: 28, height: 28, borderRadius: 999, background: "#e5e7eb" }} />
+                    <span className="ws-userchip-dot" />
                   )}
-                  <span className="font-medium">{k.name}</span>
+                  <span className="ws-userchip-name">{u.name}</span>
                 </button>
               );
             })}
           </div>
+        )}
+
+        <div className="ws-lib-head">
+          <h3 className="ws-title">Bibliotheek</h3>
+          <p className="ws-sub">Sleep taken naar een dagblok</p>
         </div>
-      )}
 
-      {/* Titel + weeknavigatie */}
-      <h2 className="text-3xl font-bold mb-1">Weekschema</h2>
-      <div className="flex items-center gap-3 mb-5">
-        <button
-          onClick={gotoPrevWeek}
-          className="px-3 py-2 rounded-xl border border-neutral-200 bg-white/80 hover:bg-white shadow-sm"
-        >
-          ← Vorige week
-        </button>
-        <button
-          onClick={gotoThisWeek}
-          className="px-3 py-2 rounded-xl border border-neutral-200 bg-white/80 hover:bg-white shadow-sm"
-        >
-          Vandaag
-        </button>
-        <button
-          onClick={gotoNextWeek}
-          className="px-3 py-2 rounded-xl border border-neutral-200 bg-white/80 hover:bg-white shadow-sm"
-        >
-          Volgende week →
-        </button>
-      </div>
-
-      {/* === 2-koloms layout: bibliotheek links, rooster rechts === */}
-      <section className="ws-layout">
-
-        {/* ───── LINKERKOLOM: BIBLIOTHEEK ───── */}
-        <aside className="ws-left">
-          <div className="ws-left-header">
-            <h3 className="text-xl font-semibold mb-3">Bibliotheek</h3>
-
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Zoeken op naam of id…"
-              className="px-3 py-2 rounded-xl border border-neutral-300 w-full"
-            />
-
-            <label className="inline-flex items-center gap-2 mt-3 select-none">
-              <input
-                type="checkbox"
-                checked={onlySchool}
-                onChange={(e) => setOnlySchool(e.target.checked)}
-              />
-              <span>Alleen ‘school’-taken</span>
-            </label>
-          </div>
-
-          <div className="ws-left-scroll">
-            {(filteredLibrary || []).map((t) => {
-              const src = t.picto && (t.picto.startsWith("/") ? t.picto : `/pictos/${t.picto}`);
-              return (
-                <div
-                  key={t.id}
-                  draggable
-                  onDragStart={(e) => onDragStartTask(e, t.id)}
-                  className="ws-lib-item"
-                  title={t.name || t.id}
-                >
-                  {src ? (
-                    <img className="ws-lib-picto" src={src} alt={t.name || ""} />
-                  ) : (
-                    <div className="ws-lib-picto" />
-                  )}
-                  <div>
-                    <div className="ws-lib-title">{t.name || t.id}</div>
-                    {t.tags?.length ? (
-                      <div className="ws-lib-sub">{t.tags.join(" • ")}</div>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-
-            {filteredLibrary.length === 0 && (
-              <div className="text-neutral-500">Geen taken gevonden.</div>
-            )}
-          </div>
-        </aside>
-
-        {/* ───── RECHTERKOLOM: ROOSTER ───── */}
-        <main className="ws-right">
-          {/* dagkoppen */}
-          <div className="grid grid-cols-7 gap-3 mb-2">
-            {DAY_IDS.map((d, i) => {
-              const date = addDays(monday, i);
-              const show = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-                date.getDate()
-              ).padStart(2, "0")}`;
-              return (
-                <div key={d} className="text-center text-sm font-semibold text-neutral-700">
-                  <div className="text-base">{DAY_LABELS[d]}</div>
-                  <div className="text-neutral-500">{show}</div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 3 blokken-rijen */}
-          {BLOCKS.map((b) => (
-            <div key={b.id} className="mb-5">
-              <div className="text-sm font-semibold mb-1">
-                {b.label} <span className="text-neutral-500">— {b.time}</span>
+        <div className="ws-lib-list">
+          {SAFE_LIBRARY.length ? (
+            SAFE_LIBRARY.map((t) => (
+              <div
+                key={t.id}
+                className="ws-lib-item"
+                draggable
+                onDragStart={(e) => onDragFromLib(e, t.id)}
+                title="Sleep naar een dagblok"
+                role="button"
+              >
+                {t.icon ? <span className="ws-icon" aria-hidden>{t.icon}</span> : <span className="ws-dot" />}
+                <span className="ws-lib-text">{t.title}</span>
               </div>
-              <div className="grid grid-cols-7 gap-3">
-                {DAY_IDS.map((d) => {
-                  const items = assignments?.[d]?.[b.id] || [];
-                  return (
-                    <div
-                      key={`${d}-${b.id}`}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => onDropTask(e, d, b.id)}
-                      className="min-h-[120px] rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-2"
-                    >
-                      {/* geplaatste taken */}
-                      <div className="flex flex-wrap gap-2">
-                        {items.map((tid, idx) => {
-                          const t = LIB_BY_ID[tid];
-                          const src = t?.picto && (t.picto.startsWith("/") ? t.picto : `/pictos/${t.picto}`);
-                          return (
-                            <div key={`${tid}-${idx}`} className="relative" title={t?.name || tid}>
-                              <div
-                                className="w-[64px] h-[64px] rounded-xl bg-white shadow-sm border border-neutral-200 flex items-center justify-center"
-                                style={{ padding: 4 }}
-                              >
-                                {src ? (
-                                  <img
-                                    src={src}
-                                    alt={t?.name || ""}
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "contain",
-                                      borderRadius: 10,
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="w-full h-full rounded-lg bg-neutral-200" />
-                                )}
-                              </div>
-                              <button
-                                onClick={() => removeTask(d, b.id, idx)}
-                                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border border-neutral-300 text-neutral-600 hover:bg-neutral-100"
-                                title="Verwijderen"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
+            ))
+          ) : (
+            <div className="ws-lib-empty">Geen items in de bibliotheek.</div>
+          )}
+        </div>
 
-                      {/* hint */}
-                      <div className="text-xs text-neutral-400 mt-2 text-center">
-                        Sleep hier taken
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+        <div className="ws-weekbar">
+          <button className="ws-btn" onClick={gotoPrevWeek} title="Vorige week">◀</button>
+          <button className="ws-btn" onClick={gotoThisWeek} title="Deze week">Vandaag</button>
+          <button className="ws-btn" onClick={gotoNextWeek} title="Volgende week">▶</button>
+          <span className="ws-weeklabel">{weekLabel}</span>
+        </div>
+      </aside>
+
+      {/* ------- Weekschema (rechts) ------- */}
+      <section>
+        {/* Dagkoppen */}
+        <div className="ws-days-grid">
+          {SAFE_DAY_IDS.map((dayId, i) => (
+            <div key={dayId} className="ws-day-head">
+              <div className="ws-day-name">{dayLabels[i]}</div>
             </div>
           ))}
-        </main>
+        </div>
+
+        {/* Rijen per blok */}
+        {SAFE_BLOCKS.map((blk) => (
+          <div key={blk.id} className="ws-block-row">
+            <div className="ws-days-grid">
+              {SAFE_DAY_IDS.map((dayId, idx) => {
+                const cellTasks = assignments?.[dayId]?.[blk.id] ?? [];
+                return (
+                  <div
+                    key={`${dayId}_${blk.id}`}
+                    className="ws-dropzone"
+                    data-block={blk.id}
+                    data-day={dayId}
+                    onDragOver={onDragOver}
+                    onDragLeave={onDragLeave}
+                    onDrop={(e) => onDropToCell(e, dayId, blk.id)}
+                  >
+                    <div className="ws-block-caption">{labelFor(blk.id, idx, blk.label)}</div>
+                    <div className="ws-chip-wrap">
+                      {Array.isArray(cellTasks) && cellTasks.map((taskId) => {
+                        const t = SAFE_LIB_BY_ID[taskId];
+                        if (!t) return null;
+                        return (
+                          <div
+                            key={taskId}
+                            className="ws-task-chip"
+                            draggable
+                            onDragStart={(e) => onDragFromCell(e, taskId, { dayId, blockId: blk.id })}
+                            title="Sleep of verwijder met ×"
+                          >
+                            {t.icon ? <span className="ws-chip-icon" aria-hidden>{t.icon}</span> : <span className="ws-chip-dot" />}
+                            <span className="ws-chip-text">{t.title}</span>
+                            <button
+                              type="button"
+                              className="ws-chip-remove"
+                              aria-label="Verwijder taak"
+                              onClick={() => removeTask?.(dayId, blk.id, taskId)}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </section>
     </div>
   );

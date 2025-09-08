@@ -51,7 +51,7 @@ export default function Header_Parent({
 
   return (
     <section style={wrap}>
-      {showLegend && <div style={legend}>Ouder-module</div>}
+      {showLegend && <div className="parent-header">Ouder-module</div>}
       <div style={rail}>
         {ordered.map((u) => (
           <UserTile
