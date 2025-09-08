@@ -1,6 +1,6 @@
 // src/modules/library/index.jsx
 import React from "react";
-import './index.css';
+
 
 /**
  * Demo-collecties. In productie kun je hier uit Firestore lezen of
