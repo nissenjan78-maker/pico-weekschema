@@ -1,222 +1,311 @@
-/* ========= Reset (lichtgewicht, geen agressieve global img-rules) ========= */
+/* ====================================================================
+   Pico Weekschema – Single CSS (vervang alle andere losse CSS-bestanden)
+   ==================================================================== */
+
+/* ---------- Design tokens ---------- */
 :root {
-  --radius: 12px;
-  --border: #e5e7eb;
   --bg: #ffffff;
-  --bg-soft: #f8fafc;
-  --muted: #64748b;
+  --paper: #ffffff;
+  --paper-weak: #f8fafc;       /* zacht grijs */
+  --ink: #0f172a;              /* slate-900 */
+  --muted: #64748b;            /* slate-500 */
+  --border: #e5e7eb;           /* slate-200 */
+  --accent: #2563eb;           /* blue-600 */
+  --accent-weak: #dbeafe;      /* blue-100 */
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 20px rgba(0,0,0,.06);
 }
 
-html, body {
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+}
+
+html { font-size: 16px; }
+
+body {
   margin: 0;
-  padding: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
-  color: #111827;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img { display: block; max-width: 100%; }
+
+/* ---------- Helpers ---------- */
+.container {
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: 20px;
+}
+
+.hstack { display: flex; gap: 10px; align-items: center; }
+.gap-16 { gap: 16px; }
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,.02);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.btn:hover { background: #fff; border-color: #dbe0e6; box-shadow: var(--shadow); }
+.btn:active { transform: translateY(0.5px); }
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { background: #1e55c9; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
   background: #fff;
 }
 
-button { cursor: pointer; }
-
-/* ========= Cards / Buttons ========= */
-.ws-btn {
-  padding: 8px 12px;
+/* ---------- Cards / panels ---------- */
+.card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #fff;
-}
-.ws-btn:hover { background: #fff; }
-
-.ws-chip {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border: 1px solid var(--border);
-  border-radius: 999px; background: #fff;
-}
-.ws-chip.is-active {
-  border-color: #60a5fa; /* blue-400 */
-  box-shadow: 0 0 0 3px rgba(96,165,250,.3);
+  background: var(--paper);
+  box-shadow: var(--shadow);
 }
 
-/* ========= Bibliotheek (links) ========= */
-.ws-lib {
-  max-height: calc(100vh - 320px);
-  overflow: auto;
+/* ---------- Weekschema lay-out ---------- */
+
+/* Shell van het weekschema */
+.ws-shell { }
+
+/* 2-koloms lay-out: bibliotheek links, rooster rechts */
+.ws-layout {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 360px 1fr; /* links 360px, rechts rest */
+  gap: 24px;
+}
+
+/* responsief: stapel onder elkaar */
+@media (max-width: 1100px) {
+  .ws-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Bibliotheek ---------- */
+.ws-lib {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.ws-lib-header {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 
-@media (min-width: 640px) {
-  .ws-lib { grid-template-columns: 1fr 1fr; }
+.ws-search {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  outline: none;
 }
-@media (min-width: 1024px) {
-  .ws-lib { grid-template-columns: 1fr 1fr 1fr; }
+.ws-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+
+/* lijst is scrollbaar */
+.ws-lib-list {
+  max-height: calc(100vh - 280px);
+  overflow: auto;
+  padding-right: 4px;
 }
 
+/* item */
 .ws-lib-item {
   display: grid;
   grid-template-columns: 56px 1fr;
-  gap: 12px;
   align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  border-radius: var(--radius);
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
   cursor: grab;
+  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
 }
-.ws-lib-picto {
-  width: 56px !important;
-  height: 56px !important;
-  object-fit: contain !important;
-  border-radius: 10px;
-  background: #fff;
+.ws-lib-item + .ws-lib-item { margin-top: 10px; }
+.ws-lib-item:hover { box-shadow: var(--shadow); border-color: #d9dee5; background: var(--paper-weak); }
+
+.ws-picto {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
   border: 1px solid var(--border);
-  display: block;
-}
-.ws-lib-title { font-weight: 600; line-height: 1.1; }
-.ws-lib-sub   { font-size: 12px; color: var(--muted); }
-
-/* ========= Weekkoppen & blokken ========= */
-.ws-days {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px;
-}
-.ws-day-head {
-  text-align: center; font-weight: 600; color: #374151;
-}
-.ws-day-date { color: #6b7280; }
-
-.ws-block-row { margin: 16px 0; }
-.ws-block-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
-.ws-block-time  { color: #6b7280; }
-
-.ws-block-grid {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px;
-}
-.ws-drop {
-  min-height: 120px;
-  border: 1px dashed var(--border);
-  background: var(--bg-soft);
-  border-radius: var(--radius);
-  padding: 8px;
-}
-
-.ws-tasks {
-  display: flex; flex-wrap: wrap; gap: 8px;
-}
-.ws-tile {
-  position: relative;
-  width: 64px; height: 64px;
   border-radius: 12px;
   background: #fff;
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-  display: flex; align-items: center; justify-content: center;
-  padding: 4px;
-}
-.ws-tile img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  border-radius: 8px;
-}
-.ws-tile-remove {
-  position: absolute; right: -6px; top: -6px;
-  width: 20px; height: 20px; border-radius: 999px;
-  border: 1px solid var(--border); background: #fff; color: #374151;
 }
 
-/* ========= Kleine hulplabels ========= */
-.ws-hint { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 6px; }
+.ws-title { font-weight: 700; }
+.ws-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-/* ========= Formulier spul ========= */
-.ws-input {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: var(--radius);
-  min-width: 300px;
+/* ---------- Rooster (rechts) ---------- */
+
+.ws-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 16px;
+  margin-bottom: 8px;
 }
-.ws-row { display: flex; gap: 12px; align-items: center; }
-.ws-section-title { font-size: 20px; font-weight: 700; margin: 20px 0 8px; }
 
-/* 2-koloms layout */
-.ws-2col {
-  display: flex;
+.ws-dayhead {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.ws-dayhead .ws-dayname { font-weight: 700; color: var(--ink); font-size: 16px; }
+.ws-dayhead .ws-date    { color: var(--muted); font-size: 14px; }
+
+/* Block-rijen (ochtend/middag/avond) */
+.ws-row {
+  margin-bottom: 18px;
+}
+.ws-rowlabel {
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.ws-rowlabel small { color: var(--muted); }
+
+/* Dropzones: 7 kolommen voor de dagen */
+.ws-rowgrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
   gap: 16px;
 }
 
-.ws-aside {
-  flex: 0 0 320px;          /* vaste kolombreedte links */
-  max-width: 320px;
-  position: sticky;         /* blijft zichtbaar bij scrollen */
-  top: 80px;                /* pas aan aan je headerhoogte */
-  align-self: flex-start;
+/* de zone waar taken in staan of naartoe gesleept worden */
+.ws-dropzone {
+  min-height: 140px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--paper-weak);
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-content: flex-start;
+  transition: border-color .15s ease, background .15s ease;
+}
+.ws-dropzone:hover { border-color: #cfd6df; background: #f6f8fb; }
+
+.ws-hint {
+  width: 100%;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 8px;
 }
 
-.ws-main {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Bibliotheek als compacte lijst */
-.ws-lib {
-  max-height: calc(100vh - 230px); /* past zich aan aan de viewport */
-  overflow-y: auto;
-}
-
-.ws-lib-item {
+/* ---------- Taaktegel ---------- */
+.ws-task {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  box-shadow: var(--shadow);
   display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  cursor: grab;
+  place-items: center;
+  padding: 6px;
 }
-.ws-lib-item + .ws-lib-item { margin-top: 10px; }
-
-.ws-lib-picto {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
+.ws-task img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  border-radius: 10px;
+}
+
+.ws-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  color: #374151;
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .15s ease, transform .12s ease;
 }
+.ws-remove:hover { background: #f3f4f6; transform: scale(1.03); }
 
-.ws-lib-title { font-weight: 700; }
-.ws-lib-sub   { font-size: 12px; color: #64748b; }
-
-/* Responsive: stack onder elkaar op small screens */
-@media (max-width: 1024px) {
-  .ws-2col {
-    flex-direction: column;
-  }
-  .ws-aside {
-    position: static;
-    max-width: 100%;
-    flex: 1 1 auto;
-  }
-  .ws-lib {
-    max-height: none;
-  }
-}
-
-/* Reeds gebruikte generieke helpers (als je ze nog niet hebt) */
-.ws-btn {
+/* ---------- Avatars / chips (Rooster voor:) ---------- */
+.kid-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--paper);
+  cursor: pointer;
+  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
 }
-.ws-row { display: flex; align-items: center; gap: 8px; }
-.ws-input {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  width: 260px;
+.kid-pill:hover { box-shadow: var(--shadow); border-color: #d9dee5; }
+.kid-pill.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+.kid-pill img {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  object-fit: cover;
 }
 
-/* Days / grid / tiles – behoud je eerdere ws-* stijlen hier… */
+/* ---------- Utilities voor print/klein scherm ---------- */
+@media (max-width: 720px) {
+  .ws-days,
+  .ws-rowgrid { grid-template-columns: repeat(2, 1fr); }
+}
 
+@media print {
+  .btn, .badge { display: none !important; }
+  .ws-lib { page-break-inside: avoid; }
+}
+
+/* einde */
