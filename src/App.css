@@ -1,0 +1,12 @@
+/* Week Schedule hard caps */
+.ws-lib img { max-width: 64px; max-height: 64px; object-fit: contain; }
+.ws-lib-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #e5e7eb; /* neutral-200 */
+  border-radius: 12px;
+  background: #fff;
+  margin-bottom: 10px;
+}

@@ -1,0 +1,5 @@
+[
+  { "id": "ico_play",  "label": "Play",  "src": "/icons/play.svg" },
+  { "id": "ico_pause", "label": "Pause", "src": "/icons/pause.svg" },
+  { "id": "ico_check", "label": "Check", "src": "/icons/check.svg" }
+]

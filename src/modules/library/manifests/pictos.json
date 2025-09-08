@@ -1,0 +1,6 @@
+[
+  { "id": "pic_aankleden", "label": "Aankleden", "src": "/pictos/Aankleden.png", "category": "Zelfzorg" },
+  { "id": "pic_inbad",     "label": "In bad",    "src": "/pictos/InBad.png",     "category": "Zelfzorg" },
+  { "id": "pic_slapen",    "label": "Slapen",    "src": "/pictos/Slapen.png",    "category": "Rust" },
+  { "id": "pic_zaag",      "label": "Zaag",      "src": "/pictos/Zaag.png",      "category": "Klusjes" }
+]
