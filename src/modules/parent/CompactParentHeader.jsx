@@ -1,125 +1,53 @@
-// src/modules/parent/CompactParentHeader.jsx
-import React, { useMemo, useState } from "react";
+import React from "react";
 
 /**
- * CompactParentHeader
- * - Chip "Admin" + tip "FamID: X · Firestore: <status>" op dezelfde lijn
- * - Rij gebruikerskaarten (alleen kinderen klikbaar)
- * - forceAdminActive: op Home Papa highlighten i.p.v. currentUserId
- *
- * Props:
- *  users: Array<{ id, name, role, avatar? }>
- *  currentUserId?: string
- *  onFocusUser?: (id: string) => void
- *  famId?: string
- *  isFirestoreReady?: boolean | undefined
- *  forceAdminActive?: boolean (default true)
+ * Compacte kop met de gezinsleden; de actieve krijgt een blauwe ring.
  */
 export default function CompactParentHeader({
-  users = [],
+  users,
   currentUserId,
   onFocusUser,
-  famId,
-  isFirestoreReady,
-  forceAdminActive = true,
 }) {
-  const list = Array.isArray(users) ? users : [];
-
-  const adminUser = useMemo(
-    () => list.find((u) => (u.role || "").toLowerCase() === "ouder"),
-    [list]
-  );
-
-  const displayActiveId =
-    forceAdminActive && adminUser ? adminUser.id : currentUserId;
-
-  const fsLabel =
-    isFirestoreReady === true
-      ? "verbonden"
-      : isFirestoreReady === false
-      ? "niet verbonden"
-      : "onbekend";
-
-  const initialsOf = (name = "") =>
-    name
-      .trim()
-      .split(/\s+/)
-      .map((s) => s[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-
-  /** Avatar: toon initialen enkel als er geen/kapotte image is */
-  function Avatar({ src, name }) {
-    const [showInitials, setShowInitials] = useState(!src);
-
-    return (
-      <div className="ph-user-avatar">
-        {showInitials && (
-          <span className="ph-user-initials">{initialsOf(name)}</span>
-        )}
-        {src ? (
-          <img
-            className="ph-user-img"
-            src={src}
-            alt=""
-            draggable={false}
-            onLoad={() => setShowInitials(false)}
-            onError={(e) => {
-              setShowInitials(true);
-              e.currentTarget.style.display = "none"; // verberg kapotte img
-            }}
-          />
-        ) : null}
-      </div>
-    );
-  }
-
-  const isKid = (u) => (u.role || "").toLowerCase() === "kind";
-
   return (
-    <div className="ph-card parent-header">
-      {/* Headbar in dezelfde stijl als 'Menu' */}
-      <div className="ph-headbar" style={{ justifyContent: "flex-start" }}>
-        <span className="ph-chip">Admin</span>
-        <span className="ph-tip-inline">
-          FamID: {famId ?? "—"} · Firestore: {fsLabel}
-        </span>
-      </div>
+    <div className="cph">
+      {users.map((u) => {
+        const active = u.id === currentUserId;
+        return (
+          <button
+            key={u.id}
+            className={`cph-card ${active ? "is-active" : ""}`}
+            onClick={() => onFocusUser?.(u.id)}
+            type="button"
+          >
+            <div className="cph-avatar">
+              <img
+                src={u.avatar}
+                alt=""
+                onError={(e)=> (e.currentTarget.style.visibility="hidden")}
+              />
+            </div>
+            <div className="cph-meta">
+              <div className="cph-name">{u.name}</div>
+              <div className="cph-role">{u.role}</div>
+            </div>
+          </button>
+        );
+      })}
 
-      <div className="ph-card-body ph-card-body--tight">
-        <div className="ph-userlist">
-          {list.map((u) => {
-            const active = u.id === displayActiveId;
-            const selectable = isKid(u);
-            return (
-              <button
-                key={u.id}
-                type="button"
-                className={[
-                  "ph-usercard",
-                  active ? "is-active" : "",
-                  selectable ? "" : "is-disabled",
-                ].join(" ")}
-                onClick={() => selectable && onFocusUser?.(u.id)}
-                aria-pressed={active ? "true" : "false"}
-                aria-label={`${u.name} – ${u.role}`}
-                title={
-                  selectable
-                    ? `${u.name} selecteren`
-                    : `${u.name} (niet selecteerbaar)`
-                }
-              >
-                <Avatar src={u.avatar} name={u.name} />
-                <div className="ph-user-meta">
-                  <div className="ph-user-name">{u.name}</div>
-                  <div className="ph-user-role">{u.role}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <style>{`
+        .cph{ display:flex; gap:14px; flex-wrap:wrap; }
+        .cph-card{
+          display:flex; align-items:center; gap:10px;
+          border:1px solid #e5e7eb; background:#fff; border-radius:16px;
+          padding:10px 12px; cursor:pointer;
+        }
+        .cph-card.is-active{ outline:3px solid #c7e3ff; }
+        .cph-avatar img{
+          width:48px; height:48px; border-radius:12px; object-fit:cover;
+        }
+        .cph-name{ font-weight:800; }
+        .cph-role{ color:#6b7280; }
+      `}</style>
     </div>
   );
 }

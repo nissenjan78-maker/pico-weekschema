@@ -1,101 +1,135 @@
 // src/modules/parent/ParentHome.jsx
-import React, { useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useCallback } from "react";
 
 /**
- * Ouder-menu (kaart met tegels)
+ * Compact ouder-menu (tegels, met eigen scoped CSS)
  * Props:
- *  - onOpen(viewId): 'weekschedule'|'blocks'|'users'|'devices'|'library'
- *  - activeView: string
- *  - title?: string (default "Menu")
+ *  - onOpen(viewId): 'weekschedule'|'dayplan'|'users'|'devices'|'library'
+ *  - activeView: id van de geopende pagina (legt ring)
+ *  - title?: label boven de tegels (default: "Menu")
  */
 export default function ParentHome({ onOpen, activeView, title = "Menu" }) {
-  const tiles = useMemo(
-    () => [
-      { id: "weekschedule", title: "Weekschema",       icon: "📅" },
-      { id: "blocks",       title: "Blokken beheren",  icon: "⏱️" },
-      { id: "users",        title: "Gebruikers",       icon: "👨‍👩‍👧‍👦" },
-      { id: "devices",      title: "Devices",          icon: "💻" },
-      { id: "library",      title: "Bibliotheek",      icon: "📚" },
-    ],
-    []
-  );
+  const tiles = [
+    { id: "weekschedule", title: "Weekschema", icon: "📅" },
+    { id: "dayplan",      title: "Dagindeling", icon: "⏱️" },
+    { id: "users",        title: "Gebruikers",   icon: "👨‍👩‍👧‍👦" },
+    { id: "devices",      title: "Devices",      icon: "💻" },
+    { id: "library",      title: "Bibliotheek",  icon: "📚" },
+  ];
 
-  const btnRefs = useRef([]);
-
-  const handleOpen = useCallback((id) => {
-    if (typeof onOpen === "function") onOpen(id);
+  // Sneltoetsen 1..5 om tegels te openen
+  const onKey = useCallback((e) => {
+    if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const n = Number(e.key);
+    if (!Number.isInteger(n) || n < 1 || n > tiles.length) return;
+    const t = tiles[n - 1];
+    onOpen?.(t.id);
   }, [onOpen]);
 
-  // Hotkeys 1–9
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.altKey || e.metaKey || e.ctrlKey) return;
-      const n = Number(e.key);
-      if (!Number.isNaN(n) && n >= 1 && n <= tiles.length) {
-        e.preventDefault();
-        const idx = n - 1;
-        handleOpen(tiles[idx].id);
-        btnRefs.current[idx]?.focus();
-      }
-    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tiles, handleOpen]);
-
-  // Pijltjestoetsen in grid
-  const onTileKeyDown = useCallback((e, idx) => {
-    const width = window.innerWidth;
-    const cols = width >= 1280 ? 5 : width >= 768 ? 3 : width >= 640 ? 2 : 1;
-    const go = (i) => btnRefs.current[i]?.focus();
-
-    switch (e.key) {
-      case "ArrowRight": e.preventDefault(); go(Math.min(idx + 1, tiles.length - 1)); break;
-      case "ArrowLeft":  e.preventDefault(); go(Math.max(idx - 1, 0)); break;
-      case "ArrowDown":  e.preventDefault(); go(Math.min(idx + cols, tiles.length - 1)); break;
-      case "ArrowUp":    e.preventDefault(); go(Math.max(idx - cols, 0)); break;
-      case "Enter":
-      case " ":
-        e.preventDefault(); handleOpen(tiles[idx].id); break;
-      default: break;
-    }
-  }, [tiles, handleOpen]);
+  }, [onKey]);
 
   return (
     <div className="ph-card">
-      {/* Headbar: label + tip op één lijn (CSS zorgt dat dit niet wrapt) */}
-      <div className="ph-headbar">
+      <div className="ph-headbar ph-headbar--inline">
         <span className="ph-chip">{title}</span>
-        <span className="ph-tip-inline">
-          Tip: gebruik 1–{tiles.length} om snel te openen · pijltjestoetsen om te navigeren
-        </span>
+       <span className="ph-tip-inline">
+  Tip: gebruik&nbsp;<b>1–5</b> &nbsp;om snel te openen · pijltjestoetsen om te navigeren
+</span>
       </div>
 
-      {/* Inhoud (tegels hoog onder de headbar) */}
-      <div className="ph-card-body ph-card-body--tight ph-card-body--no-topgap">
-        <div className="ph-grid" role="grid" aria-label="Menu opties">
-          {tiles.map((t, i) => (
-            <button
-              key={t.id}
-              ref={(el) => (btnRefs.current[i] = el)}
-              type="button"
-              className={`ph-tile ${activeView === t.id ? "is-active" : ""}`}
-              role="gridcell"
-              aria-selected={activeView === t.id ? "true" : "false"}
-              aria-label={`${t.title} (${i + 1})`}
-              onClick={() => handleOpen(t.id)}
-              onKeyDown={(e) => onTileKeyDown(e, i)}
-            >
-              <div className="ph-tile-icon" aria-hidden>
-                <span className="ph-emoji">{t.icon}</span>
-              </div>
-              <div className="min-w-0 ph-tile-text">
-                <div className="ph-tile-title">{t.title}</div>
-                {/* Geen ondertitel “Open …” meer */}
-              </div>
-            </button>
-          ))}
-        </div>
+      <div className="ph-tiles">
+        {tiles.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={[
+              "ph-tile",
+              activeView === t.id ? "ph-tile--active" : "",
+            ].join(" ")}
+            onClick={() => onOpen?.(t.id)}
+          >
+            <div className="ph-tile-icon" aria-hidden="true">{t.icon}</div>
+            <div className="ph-tile-title">{t.title}</div>
+          </button>
+        ))}
       </div>
+
+      {/* Scoped CSS */}
+   <style>{`
+  .ph-card{ margin-top:6px; padding-block: 12px; }
+
+  .ph-headbar{
+    display:flex; gap:12px; margin-bottom:10px;
+
+    /* >>> nieuw: ook hier baselines uitlijnen */
+    align-items: baseline;
+  }
+
+  /* Menu-lijn: label + tip op 1 lijn, zonder afbreken */
+.ph-headbar--inline{
+  justify-content:flex-start;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+
+  /* was: overflow:auto;  -> maak het puur horizontaal en verberg verticaal */
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  scrollbar-width: none;               /* Firefox */
+  margin-top: 2px;
+}
+.ph-headbar--inline::-webkit-scrollbar{ display:none; }    /* WebKit */
+
+
+  .ph-chip{
+    display:inline-block; padding:4px 10px; border-radius:999px;
+    border:1px solid var(--ph-border, #e5e7eb); background:#fff; font-weight:700;
+    white-space:nowrap;
+
+    /* >>> nieuw: dezelfde micro-offset als bij Admin */
+    position: relative;
+    top: 3px;
+    line-height: 1;
+  }
+
+  .ph-tip-inline{ color:#6b7280; font-size:14px; white-space:nowrap; }
+
+  /* Tegels passend + gecentreerd in de kaart */
+  .ph-tiles{
+    display:grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap:14px;
+    max-width: 1100px;
+    margin-inline: auto;
+    align-items: stretch;
+    justify-items: stretch;
+  }
+  .ph-tile{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:8px;
+    text-align:center;
+    padding:12px 14px;
+    border:1px solid var(--ph-border, #e5e7eb);
+    background:#fff;
+    border-radius:16px;
+    transition:transform .06s ease, box-shadow .06s ease, border-color .06s ease, background .06s ease;
+    min-height: 112px;
+  }
+  .ph-tile:hover{ transform: translateY(-1px); background:#fff; }
+  .ph-tile--active{ outline:2px solid #60a5fa; outline-offset:2px; }
+
+  .ph-tile-icon{
+    width:40px; height:40px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    background:#f3f4f6; font-size:20px;
+  }
+  .ph-tile-title{ font-weight:700; }
+`}</style>
+
+
     </div>
   );
 }

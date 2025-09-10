@@ -1,339 +1,293 @@
-import React, { useMemo, useState } from "react";
-import {
-  getTaskLibrary,
-  createTask,
-  updateTask,
-  deleteTask,
-  useTaskLibrary,
-} from "../../../data/taskLibrary";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 
 /**
- * Takenbibliotheek
- * - Geen eigen legend (PanelWrapper toont titel) → geen dubbele labels
- * - Zoeken + filter op schooltaken
- * - Inline bewerken in de lijst (Naam, Picto, Tags)
- * - Opslaan en Verwijderen per rij
+ * Bibliotheek met picto's + tekst.
+ * - Opslag: localStorage per householdId -> key: library:<householdId>
+ * - Start met 1 item ("Aankleden") wanneer er nog geen data is.
+ * - Wijzigt niets aan andere modules.
  */
 
-export default function LibraryPanel() {
-  const tasks = useTaskLibrary();
-  const [query, setQuery] = useState("");
-  const [onlySchool, setOnlySchool] = useState(false);
+/* ===== Helper & constants ===== */
 
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+/** Beschikbare pictos in /public/pictos (je kunt deze lijst uitbreiden). */
+const PICTO_OPTIONS = [
+  { label: "Aankleden", file: "Aankleden.png" },
+  { label: "Opstaan", file: "Opstaan.png" },
+  { label: "Ontbijt", file: "Ontbijt.png" },
+  { label: "Lezen", file: "Lezen.png" },
+  { label: "In bad", file: "in bad.png" },
+  { label: "Douchen", file: "Douchen.png" },
+  { label: "Naar bed gaan", file: "Naar bed gaan.png" },
+  { label: "Naar school gaan 2", file: "Naar school gaan 2.png" },
+  { label: "Spelen", file: "Spelen 3.png" },
+];
+
+/** Bepaal absolute public URL naar picto-file (correcte encoding voor spaties). */
+function pictoUrl(file) {
+  return `/pictos/${encodeURIComponent(file)}`;
+}
+
+/* ===== Hook voor opslag ===== */
+
+function useLibrary(householdId) {
+  const storageKey = useMemo(() => `library:${householdId}`, [householdId]);
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setItems(parsed);
+      }
+    } catch {}
+  }, [storageKey]);
+
+  const save = useCallback(
+    (next) => {
+      setItems(next);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {}
+    },
+    [storageKey]
+  );
+
+  return { items, save };
+}
+
+/* ===== Component ===== */
+
+export default function LibraryPanel({ householdId = "default" }) {
+  const { items, save } = useLibrary(householdId);
+
+  // seed 1 start-item ("Aankleden") als de bib leeg is
+  useEffect(() => {
+    if (!items || items.length === 0) {
+      const seed = [
+        {
+          id: uid(),
+          type: "picto",      // of "text"
+          title: "Aankleden", // label
+          text: "Aankleden",  // tekstvoorlees/print fallback
+          picto: "Aankleden.png",
+        },
+      ];
+      save(seed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // enkel bij eerste mount
+
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState(null); // item of null
+  const [showForm, setShowForm] = useState(false);
+
+  // eenvoudige filter (titel, tekst)
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return tasks.filter((t) => {
-      const matchesQ =
-        !q ||
-        t.text.toLowerCase().includes(q) ||
-        (t.picto || "").toLowerCase().includes(q) ||
-        (t.tags || []).join(" ").toLowerCase().includes(q);
-      const matchesSchool = !onlySchool || (t.tags || []).includes("school");
-      return matchesQ && matchesSchool;
+    if (!q) return items;
+    return items.filter(
+      (i) =>
+        (i.title || "").toLowerCase().includes(q) ||
+        (i.text || "").toLowerCase().includes(q) ||
+        (i.picto || "").toLowerCase().includes(q)
+    );
+  }, [items, query]);
+
+  /* ===== CRUD ===== */
+
+  function startCreate() {
+    setEditing({
+      id: uid(),
+      type: "picto",
+      title: "",
+      text: "",
+      picto: "Aankleden.png",
     });
-  }, [tasks, query, onlySchool]);
-
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {/* Toolbar */}
-      <div style={toolbarCard}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input
-            type="text"
-            placeholder="Zoeken op naam, picto of tag…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={input}
-          />
-          <label style={pill}>
-            <input
-              type="checkbox"
-              checked={onlySchool}
-              onChange={(e) => setOnlySchool(e.target.checked)}
-            />{" "}
-            alleen schooltaken
-          </label>
-        </div>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            style={btnPrimary}
-            onClick={() => {
-              const t = createTask({ text: "Nieuwe taak", picto: "", tags: [] });
-              // geen extra actie nodig; hook refresht lijst
-            }}
-          >
-            + Nieuwe taak
-          </button>
-          <button
-            style={btnGhost}
-            title="Exporteer JSON"
-            onClick={() => {
-              const blob = new Blob([JSON.stringify(getTaskLibrary(), null, 2)], {
-                type: "application/json",
-              });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = "takenbibliotheek.json";
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-          >
-            Exporteren
-          </button>
-        </div>
-      </div>
-
-      {/* Lijst (inline edit) */}
-      <div style={list}>
-        {filtered.length === 0 ? (
-          <div style={{ color: "#6b7280", fontSize: 14 }}>Geen taken gevonden.</div>
-        ) : (
-          filtered.map((t) => <TaskRow key={t.id} task={t} />)
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ───────────── Rijen met inline edit ───────────── */
-
-function TaskRow({ task }) {
-  const [form, setForm] = useState({
-    text: task.text || "",
-    picto: task.picto || "",
-    tags: Array.isArray(task.tags) ? task.tags : [],
-  });
-
-  const dirty =
-    form.text !== (task.text || "") ||
-    form.picto !== (task.picto || "") ||
-    JSON.stringify(form.tags) !== JSON.stringify(task.tags || []);
-
-  function toggleTag(tag) {
-    setForm((f) => ({
-      ...f,
-      tags: f.tags.includes(tag) ? f.tags.filter((x) => x !== tag) : [...f.tags, tag],
-    }));
+    setShowForm(true);
+  }
+  function startEdit(item) {
+    setEditing({ ...item });
+    setShowForm(true);
+  }
+  function cancelForm() {
+    setEditing(null);
+    setShowForm(false);
+  }
+  function commitForm() {
+    if (!editing) return;
+    const exists = items.some((it) => it.id === editing.id);
+    const next = exists
+      ? items.map((it) => (it.id === editing.id ? editing : it))
+      : [...items, editing];
+    save(next);
+    setEditing(null);
+    setShowForm(false);
+  }
+  function removeItem(id) {
+    if (!window.confirm("Verwijderen?")) return;
+    save(items.filter((i) => i.id !== id));
+  }
+  function move(id, dir) {
+    const idx = items.findIndex((i) => i.id === id);
+    if (idx < 0) return;
+    const to = idx + dir;
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    const [row] = next.splice(idx, 1);
+    next.splice(to, 0, row);
+    save(next);
   }
 
-  const [newTag, setNewTag] = useState("");
-
   return (
-    <div style={row}>
-      {/* Naam + Picto inline */}
-      <div style={{ display: "grid", gap: 6 }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <PictoThumb picto={form.picto} />
+    <div className="lib-wrap">
+      {/* Toolbar */}
+      <div className="lib-toolbar">
+        <div className="lib-left">
           <input
-            type="text"
-            value={form.text}
-            onChange={(e) => setForm((f) => ({ ...f, text: e.target.value }))}
-            placeholder="Naam (bv. Tanden Poetsen)"
-            style={{ ...input, flex: 1 }}
+            className="lib-input"
+            placeholder="Zoeken…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: "#6b7280" }}>Picto-bestand:</span>
-          <input
-            type="text"
-            value={form.picto}
-            onChange={(e) => setForm((f) => ({ ...f, picto: e.target.value }))}
-            placeholder='bv. "Tandenpoetsen.png" (uit /pictos/)'
-            style={{ ...input, flex: 1 }}
-          />
+        <div className="lib-right">
+          <button className="btn" onClick={startCreate}>
+            + Nieuw item
+          </button>
         </div>
       </div>
 
-      {/* Tags */}
-      <div style={{ display: "grid", gap: 6 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={pill}>
-            <input
-              type="checkbox"
-              checked={form.tags.includes("school")}
-              onChange={() => toggleTag("school")}
-            />{" "}
-            school
-          </label>
-          <input
-            type="text"
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            placeholder="nieuwe tag…"
-            style={input}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const t = newTag.trim().toLowerCase();
-                if (t && !form.tags.includes(t)) {
-                  setForm((f) => ({ ...f, tags: [...f.tags, t] }));
-                }
-                setNewTag("");
-              }
-            }}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {form.tags.map((t) => (
-            <span key={t} style={chip}>
-              {t}
-              <button
-                title="tag verwijderen"
-                onClick={() =>
-                  setForm((f) => ({ ...f, tags: f.tags.filter((x) => x !== t) }))
-                }
-                style={chipX}
+      {/* Grid */}
+      <div className="lib-grid">
+        {filtered.map((it) => (
+          <div className="lib-card" key={it.id}>
+            <div className="lib-thumb">
+              {it.type === "picto" ? (
+                <img
+                  src={pictoUrl(it.picto || "Aankleden.png")}
+                  alt={it.title || "Picto"}
+                  onError={(e) => {
+                    e.currentTarget.src = pictoUrl("Aankleden.png");
+                  }}
+                />
+              ) : (
+                <div className="lib-text-thumb">{it.text || it.title || "Tekst"}</div>
+              )}
+            </div>
+            <div className="lib-title">
+              {it.type === "picto" ? "Picto – " : "Tekst – "}
+              {it.title || "Zonder titel"}
+            </div>
+
+            <div className="lib-actions">
+              <button className="btn subtle" onClick={() => move(it.id, -1)}>↑</button>
+              <button className="btn subtle" onClick={() => move(it.id, +1)}>↓</button>
+              <span style={{ flex: 1 }} />
+              <button className="btn" onClick={() => startEdit(it)}>Bewerken</button>
+              <button className="btn danger" onClick={() => removeItem(it.id)}>Verwijder</button>
+            </div>
+          </div>
+        ))}
+
+        {filtered.length === 0 && (
+          <div className="lib-empty">Nog geen items… Klik op “+ Nieuw item”.</div>
+        )}
+      </div>
+
+      {/* Form */}
+      {showForm && editing && (
+        <div className="lib-modal">
+          <div className="lib-modal-card">
+            <div className="lib-formrow">
+              <label className="lib-label">Type</label>
+              <select
+                className="lib-input"
+                value={editing.type}
+                onChange={(e) => setEditing({ ...editing, type: e.target.value })}
               >
-                ×
-              </button>
-            </span>
-          ))}
-          {form.tags.length === 0 && (
-            <span style={{ color: "#9ca3af", fontSize: 12 }}>(geen tags)</span>
-          )}
+                <option value="picto">Picto (afbeelding)</option>
+                <option value="text">Tekst</option>
+              </select>
+            </div>
+
+            <div className="lib-formrow">
+              <label className="lib-label">Titel</label>
+              <input
+                className="lib-input"
+                value={editing.title}
+                onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+                placeholder="Aankleden"
+              />
+            </div>
+
+            {editing.type === "picto" ? (
+              <>
+                <div className="lib-formrow">
+                  <label className="lib-label">Picto</label>
+                  <select
+                    className="lib-input"
+                    value={editing.picto}
+                    onChange={(e) => setEditing({ ...editing, picto: e.target.value })}
+                  >
+                    {PICTO_OPTIONS.map((p) => (
+                      <option key={p.file} value={p.file}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lib-formrow">
+                  <label className="lib-label">Voorbeeld</label>
+                  <img
+                    src={pictoUrl(editing.picto || "Aankleden.png")}
+                    alt="preview"
+                    style={{ width: 80, height: 80, borderRadius: 10, border: "1px solid #e5e7eb" }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="lib-formrow">
+                <label className="lib-label">Tekst</label>
+                <input
+                  className="lib-input"
+                  value={editing.text}
+                  onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+                  placeholder="Aankleden"
+                />
+              </div>
+            )}
+
+            <div className="lib-modal-actions">
+              <button className="btn" onClick={commitForm}>Opslaan</button>
+              <button className="btn subtle" onClick={cancelForm}>Annuleren</button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Acties */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-        <button
-          style={{ ...btnPrimary, opacity: dirty ? 1 : 0.6 }}
-          disabled={!dirty}
-          onClick={() =>
-            updateTask(task.id, {
-              text: (form.text || "").trim() || "Naamloze taak",
-              picto: (form.picto || "").trim(),
-              tags: form.tags,
-            })
-          }
-        >
-          Opslaan
-        </button>
-        <button
-          style={btnDanger}
-          onClick={() => {
-            if (confirm("Taak verwijderen?")) deleteTask(task.id);
-          }}
-        >
-          Verwijderen
-        </button>
-      </div>
+      <style>{`
+        .btn{ padding:6px 10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; font-weight:600; cursor:pointer; }
+        .btn.subtle{ background:#fff; }
+        .btn.danger{ background:#fff0f0; border-color:#f3c1c1; }
+        .lib-wrap{ display:flex; flex-direction:column; gap:12px; }
+        .lib-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+        .lib-left{ display:flex; align-items:center; gap:8px; }
+        .lib-input{ height:36px; border:1px solid #e5e7eb; border-radius:10px; padding:0 10px; min-width:260px; }
+        .lib-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+        .lib-card{ border:1px solid #e5e7eb; border-radius:14px; padding:10px; background:#fff; display:flex; flex-direction:column; gap:8px; }
+        .lib-thumb{ width:100%; aspect-ratio:1/1; border:1px solid #e5e7eb; border-radius:12px; background:#f8fafc; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .lib-thumb img{ width:100%; height:100%; object-fit:cover; }
+        .lib-text-thumb{ font-weight:800; color:#111; }
+        .lib-title{ font-weight:800; }
+        .lib-actions{ display:flex; align-items:center; gap:6px; }
+        .lib-empty{ grid-column:1/-1; text-align:center; color:#6b7280; font-style:italic; padding:20px 0; }
+        .lib-modal{ position:fixed; inset:0; background:rgba(0,0,0,.12); display:flex; align-items:center; justify-content:center; z-index:50; }
+        .lib-modal-card{ width:min(520px,92vw); background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+        .lib-formrow{ display:flex; align-items:center; gap:10px; }
+        .lib-label{ width:140px; color:#6b7280; }
+        .lib-modal-actions{ display:flex; gap:8px; justify-content:flex-end; padding-top:4px; }
+      `}</style>
     </div>
   );
 }
-
-/* ───────────── Kleine helpers / styling ───────────── */
-
-function PictoThumb({ picto }) {
-  const size = 44;
-  const box = {
-    width: size,
-    height: size,
-    borderRadius: 8,
-    border: "1px solid #e5e7eb",
-    background: "#f8fafc",
-    display: "grid",
-    placeItems: "center",
-    overflow: "hidden",
-  };
-  if (!picto) return <div style={box} />;
-  const src = `/pictos/${picto}`;
-  return (
-    <div style={box}>
-      <img
-        src={src}
-        alt={picto}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        onError={(e) => (e.currentTarget.style.display = "none")}
-      />
-    </div>
-  );
-}
-
-const toolbarCard = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  flexWrap: "wrap",
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  background: "rgba(255,255,255,.85)",
-  padding: 10,
-};
-
-const list = { display: "grid", gap: 8 };
-
-const row = {
-  display: "grid",
-  gridTemplateColumns: "1.4fr 0.9fr auto",
-  alignItems: "center",
-  gap: 10,
-  padding: 10,
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  background: "#fff",
-};
-
-const input = {
-  padding: "6px 10px",
-  borderRadius: 12,
-  border: "1px solid #d4d4d8",
-  background: "rgba(255,255,255,.9)",
-  outline: "none",
-  fontSize: 14,
-};
-
-const pill = {
-  padding: "6px 10px",
-  borderRadius: 9999,
-  border: "1px solid #d4d4d8",
-  background: "#fff",
-  fontSize: 14,
-};
-
-const chip = {
-  fontSize: 12,
-  padding: "2px 8px",
-  borderRadius: 9999,
-  border: "1px solid #e5e7eb",
-  background: "#f8fafc",
-  display: "inline-flex",
-  alignItems: "center",
-};
-
-const chipX = {
-  marginLeft: 6,
-  border: "none",
-  background: "transparent",
-  cursor: "pointer",
-  color: "#6b7280",
-  fontSize: 13,
-};
-
-const btnGhost = {
-  padding: "6px 10px",
-  borderRadius: 12,
-  border: "1px solid #d4d4d8",
-  background: "#fafafa",
-  cursor: "pointer",
-};
-
-const btnPrimary = {
-  padding: "6px 10px",
-  borderRadius: 12,
-  border: "1px solid #93c5fd",
-  background: "#3b82f6",
-  color: "white",
-  cursor: "pointer",
-};
-
-const btnDanger = {
-  padding: "6px 10px",
-  borderRadius: 12,
-  border: "1px solid #fecaca",
-  background: "#ef4444",
-  color: "white",
-  cursor: "pointer",
-};

@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, firebaseReady } from "../lib/firebase";
 
-/**
- * Haal 1 household-doc realtime op: { library, planned, blockOverrides, ... }
- */
 export function useHousehold(householdId) {
   const [data, setData] = useState(null);
   const [ready, setReady] = useState(false);
@@ -12,7 +9,7 @@ export function useHousehold(householdId) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!householdId) {
+    if (!firebaseReady || !db || !householdId) {
       setData(null);
       setReady(false);
       setLoading(false);
@@ -22,7 +19,7 @@ export function useHousehold(householdId) {
     const unsub = onSnapshot(
       ref,
       (snap) => {
-        setData(snap.exists() ? ({ id: snap.id, ...snap.data() }) : null);
+        setData(snap.exists() ? { id: snap.id, ...snap.data() } : null);
         setReady(true);
         setLoading(false);
       },
@@ -36,9 +33,8 @@ export function useHousehold(householdId) {
     return () => unsub();
   }, [householdId]);
 
-  // handige, veilige afleidingen
-  const libraryById = useMemo(() => data?.library?.byId || {}, [data]);
-  const planned = useMemo(() => data?.planned || {}, [data]);
+  const libraryById    = useMemo(() => data?.library?.byId || {}, [data]);
+  const planned        = useMemo(() => data?.planned || {}, [data]);
   const blockOverrides = useMemo(() => data?.blockOverrides || {}, [data]);
 
   return { data, ready, loading, error, libraryById, planned, blockOverrides };

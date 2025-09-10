@@ -1,182 +1,103 @@
-// src/modules/parent/panels/UsersPanel.jsx
-import React, { useMemo, useState } from "react";
-import { useFamily, setPlan } from "../../../data/familyStore";
-import { useUsers, createUser, updateUser, deleteUser, getFamilyUsers } from "../../../data/usersStore";
+// src/modules/parent/UsersPanel.jsx
+import React, { useState } from "react";
+import { createUser, updateUser, removeUser } from "../../../lib/tenantApi";
 
-export default function UsersPanel() {
-  const family = useFamily();
-  const usersAll = useUsers();
-  const users = useMemo(() => getFamilyUsers(family.famId), [usersAll, family.famId]);
+export default function UsersPanel({ famId, users, onUsersChanged }) {
+  const [draft, setDraft] = useState({
+    id: "",
+    displayName: "",
+    role: "kind",
+    avatar: "",
+    pictoOnly: false,
+  });
 
-  const parents = users.filter(u => u.role === "ouder");
-  const kids = users.filter(u => u.role === "kind");
+  const up = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+
+  const handleCreate = async () => {
+    const id = draft.id.trim().toLowerCase();
+    if (!id) return;
+    const data = {
+      displayName: draft.displayName || draft.id,
+      role: draft.role || "kind",
+      avatar: draft.avatar || "",
+      pictoOnly: !!draft.pictoOnly,
+      createdAt: new Date(),
+    };
+    await createUser(famId, id, data);
+    onUsersChanged((prev) => [...prev.filter((u) => u.id !== id), { id, ...data }]);
+    setDraft({ id: "", displayName: "", role: "kind", avatar: "", pictoOnly: false });
+  };
+
+  const handleUpdate = async (u, patch) => {
+    await updateUser(famId, u.id, patch);
+    onUsersChanged((prev) => prev.map((x) => (x.id === u.id ? { ...x, ...patch } : x)));
+  };
+
+  const handleDelete = async (u) => {
+    if (!window.confirm(`Verwijder ${u.displayName}?`)) return;
+    await removeUser(famId, u.id);
+    onUsersChanged((prev) => prev.filter((x) => x.id !== u.id));
+  };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <PlanCard family={family} parentsCount={parents.length} kidsCount={kids.length} />
-
-      <div style={card}>
-        <div style={legend}>Gebruikers</div>
-        <div style={{ display: "grid", gap: 10 }}>
-          {users.map(u => <UserRow key={u.id} user={u} />)}
-          <div>
-            <button style={btnPrimary} onClick={() => {
-              try { createUser({ role: "kind" }); }
-              catch (e) { alert(e.message); }
-            }}>
-              + Kind toevoegen
-            </button>
-            <button style={btnGhost} onClick={() => {
-              try { createUser({ role: "ouder" }); }
-              catch (e) { alert(e.message); }
-            }}>
-              + Ouder toevoegen
-            </button>
-          </div>
+    <div className="users">
+      <div className="add">
+        <h4>Nieuwe gebruiker</h4>
+        <div className="row">
+          <input placeholder="id (bv. lina)" value={draft.id} onChange={(e) => up("id", e.target.value)} />
+          <input placeholder="Naam" value={draft.displayName} onChange={(e) => up("displayName", e.target.value)} />
+          <select value={draft.role} onChange={(e) => up("role", e.target.value)}>
+            <option value="ouder">Ouder</option>
+            <option value="kind">Kind</option>
+          </select>
+          <input placeholder="Avatar pad (bv. /avatars/Lina.png)" value={draft.avatar} onChange={(e) => up("avatar", e.target.value)} />
+          <label style={{display:'flex', alignItems:'center', gap:6}}>
+            <input type="checkbox" checked={draft.pictoOnly} onChange={(e) => up("pictoOnly", e.target.checked)} />
+            Alleen pictogrammen
+          </label>
+          <button onClick={handleCreate}>Toevoegen</button>
         </div>
       </div>
+
+      <h4 style={{marginTop:20}}>Gebruikers</h4>
+      <div className="list">
+        {users.map((u) => (
+          <div key={u.id} className="card">
+            <div className="left">
+              {u.avatar ? <img src={u.avatar} alt="" /> : <div className="avatarFallback">👤</div>}
+              <div>
+                <div className="name">{u.displayName || u.id}</div>
+                <div className="role">{u.role}</div>
+              </div>
+            </div>
+            <div className="right">
+              <label style={{display:'flex', alignItems:'center', gap:6}}>
+                <input
+                  type="checkbox"
+                  checked={!!u.pictoOnly}
+                  onChange={(e) => handleUpdate(u, { pictoOnly: e.target.checked })}
+                />
+                Alleen pictogrammen
+              </label>
+              <button onClick={() => handleDelete(u)}>Verwijder</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        .users .row { display:grid; grid-template-columns: 140px 1fr 120px 1fr 180px auto; gap:8px; align-items:center; }
+        .users input, .users select { padding:6px 8px; border:1px solid #e5e7eb; border-radius:8px; }
+        .list { display:grid; gap:10px; margin-top:10px; }
+        .card { border:1px solid #e5e7eb; border-radius:12px; padding:10px; display:flex; justify-content:space-between; align-items:center; }
+        .left { display:flex; gap:10px; align-items:center; }
+        .left img { width:44px; height:44px; border-radius:10px; object-fit:cover; }
+        .avatarFallback { width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#f3f4f6; }
+        .name { font-weight:700; }
+        .role { color:#6b7280; font-size:12px; }
+        .right { display:flex; gap:10px; align-items:center; }
+        button{ padding:6px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; }
+      `}</style>
     </div>
   );
 }
-
-function PlanCard({ family, parentsCount, kidsCount }) {
-  const [p, setP] = useState(family.plan.parents);
-  const [k, setK] = useState(family.plan.kids);
-
-  return (
-    <div style={card}>
-      <div style={legend}>Abonnement (Familie {family.famId})</div>
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <div>Huidig plan: <b>{family.plan.parents}</b> ouder(s), <b>{family.plan.kids}</b> kind(eren)</div>
-        <div style={{ color: "#6b7280" }}>Gebruikt: {parentsCount}/{family.plan.parents} ouders, {kidsCount}/{family.plan.kids} kids</div>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <label>Ouders: <input type="number" min={1} value={p} onChange={(e)=>setP(Number(e.target.value||1))} style={inputTiny}/></label>
-        <label>Kinderen: <input type="number" min={0} value={k} onChange={(e)=>setK(Number(e.target.value||0))} style={inputTiny}/></label>
-        <button style={btnPrimary} onClick={()=> setPlan({ parents: p, kids: k })}>Plan opslaan</button>
-      </div>
-    </div>
-  );
-}
-
-function UserRow({ user }) {
-  const [name, setName] = useState(user.name);
-  const [role, setRole] = useState(user.role);
-  const [avatar, setAvatar] = useState(user.avatar || "avatar.png");
-
-  const dirty = name !== user.name || role !== user.role || avatar !== (user.avatar || "avatar.png");
-
-  return (
-    <div style={row}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <img
-          src={`/avatars/${avatar}`}
-          onError={(e)=> (e.currentTarget.src="/avatars/avatar.png")}
-          alt="avatar"
-          style={{ width: 48, height: 48, borderRadius: 12, border: "1px solid #e5e7eb", background:"#f3f4f6" }}
-        />
-        <input value={name} onChange={(e)=>setName(e.target.value)} style={{ ...input, width: 220 }} />
-      </div>
-
-      <select value={role} onChange={(e)=>setRole(e.target.value)} style={{ ...input, width: 140 }}>
-        <option value="ouder">Ouder</option>
-        <option value="kind">Kind</option>
-      </select>
-
-      <input
-        value={avatar}
-        onChange={(e)=>setAvatar(e.target.value)}
-        placeholder="bv. Leon.png"
-        style={{ ...input, flex: 1 }}
-        list={`avatars_list_${user.id}`}
-      />
-      {/* optioneel: datalist uit /public/avatars (namen) — hou het simpel, statisch werkt ook */}
-      <datalist id={`avatars_list_${user.id}`}>
-        <option>Papa.png</option><option>Mama.png</option>
-        <option>Leon.png</option><option>Lina.png</option>
-        <option>avatar.png</option>
-      </datalist>
-
-      <div style={{ display: "flex", gap: 8, justifyContent:"flex-end" }}>
-        <button
-          style={{ ...btnPrimary, opacity: dirty ? 1 : 0.6 }}
-          disabled={!dirty}
-          onClick={()=>{
-            try { updateUser(user.id, { name, role, avatar }); }
-            catch (e) { alert(e.message); }
-          }}
-        >
-          Opslaan
-        </button>
-        <button
-          style={btnDanger}
-          onClick={()=>{
-            try { deleteUser(user.id); }
-            catch (e) { alert(e.message); }
-          }}
-        >
-          Verwijderen
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* styles */
-const card = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  background: "rgba(255,255,255,.85)",
-  padding: 12,
-  position: "relative",
-};
-const legend = {
-  position: "absolute",
-  top: -12,
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "2px 10px",
-  borderRadius: 9999,
-  border: "1px solid #e5e7eb",
-  background: "#fff",
-  fontWeight: 700,
-};
-const row = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  padding: 10,
-  display: "grid",
-  gridTemplateColumns: "minmax(260px, 340px) 160px 1fr auto",
-  gap: 10,
-  alignItems: "center",
-  background: "#fff",
-};
-const input = {
-  padding: "8px 12px",
-  borderRadius: 12,
-  border: "1px solid #d4d4d8",
-};
-const inputTiny = { ...input, width: 80, textAlign: "center" };
-const btnPrimary = {
-  padding: "8px 12px",
-  borderRadius: 12,
-  border: "1px solid #93c5fd",
-  background: "#3b82f6",
-  color: "#fff",
-  cursor: "pointer",
-};
-const btnGhost = {
-  padding: "8px 12px",
-  borderRadius: 12,
-  border: "1px solid #d4d4d8",
-  background: "#fafafa",
-  cursor: "pointer",
-};
-const btnDanger = {
-  padding: "8px 12px",
-  borderRadius: 12,
-  border: "1px solid #fecaca",
-  background: "#ef4444",
-  color: "#fff",
-  cursor: "pointer",
-};
